@@ -1,0 +1,28 @@
+# Keycloak profile — activate alongside dev to test JWT auth locally
+# without needing a real PostgreSQL instance.
+#
+# Usage:
+#   java -jar record-locator.jar --spring.profiles.active=dev,keycloak
+#
+# This profile overrides the dev filter chain with the production one
+# so that Keycloak JWTs are validated even in a local dev environment.
+# Use it when you want to test token flows end-to-end (Postman, curl)
+# without deploying to staging.
+#
+# Get a token:
+#   curl -s -X POST \
+#     https://keycloak.registry.dev.internal.asthrahealthtech.com/realms/bundle-5/protocol/openid-connect/token \
+#     -d "grant_type=client_credentials" \
+#     -d "client_id=<your-client-id>" \
+#     -d "client_secret=<your-client-secret>" \
+#     | jq -r .access_token
+#
+# Then use it:
+#   curl -H "Authorization: Bearer <token>" http://localhost:8080/fhir/DocumentReference?patient.identifier=7000000001
+
+spring:
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: https://keycloak.registry.dev.internal.asthrahealthtech.com/realms/bundle-5

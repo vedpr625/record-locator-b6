@@ -13,7 +13,9 @@ spring:
     oauth2:
       resourceserver:
         jwt:
-          issuer-uri: ${IDP_ISSUER_URI:}
+          # Keycloak realm bundle-5.
+          # Override via env var IDP_ISSUER_URI for a different environment.
+          issuer-uri: ${IDP_ISSUER_URI:https://keycloak.registry.dev.internal.asthrahealthtech.com/realms/bundle-5}
 
 server:
   port: ${SERVER_PORT:8080}

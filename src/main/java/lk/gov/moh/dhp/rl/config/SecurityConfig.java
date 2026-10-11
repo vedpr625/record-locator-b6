@@ -14,6 +14,8 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.core.env.Environment;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
+import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
 import org.springframework.security.oauth2.server.resource.web.BearerTokenAuthenticationEntryPoint;
 import org.springframework.security.oauth2.server.resource.web.access.BearerTokenAccessDeniedHandler;
 import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
@@ -69,11 +71,17 @@ public class SecurityConfig {
      * Disabling CSRF is correct and required here — leaving it enabled would cause 403 on
      * every POST/PUT/DELETE from FHIR clients that do not send a CSRF token.
      *
-     * <p>Node-to-node endpoints (/consent-events, /pointer-events) are also protected here.
-     * The real design is mTLS enforced at a reverse proxy (nginx/Envoy) in front of this app,
-     * with the proxy forwarding a header ONLY on successful client-certificate verification.
-     * {@code rl.security.mtls-header-enabled} defaults to false; flip it to true once the
-     * proxy is deployed and verified to strip any client-supplied header value.
+     * <p>JWT validation: tokens must be issued by the configured Keycloak realm
+     * (spring.security.oauth2.resourceserver.jwt.issuer-uri) and carry the
+     * "record-locator" scope. Spring validates the issuer and expiry automatically;
+     * the scope check is enforced via hasAuthority("SCOPE_record-locator").
+     *
+     * <p>Keycloak puts scopes in the "scope" claim as a space-separated string.
+     * JwtGrantedAuthoritiesConverter reads that claim and prefixes each scope with
+     * "SCOPE_", so "record-locator" in the token becomes SCOPE_record-locator here.
+     *
+     * <p>Node-to-node endpoints (/consent-events, /pointer-events) are also protected
+     * by JWT. mTLS adds a second layer once the reverse proxy is deployed.
      */
     @Bean
     @Profile("!dev")
@@ -85,15 +93,39 @@ public class SecurityConfig {
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/actuator/health").permitAll()
-                        .anyRequest().authenticated())
-                .oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt -> {}))
+                        // All other endpoints require a valid JWT with the record-locator scope.
+                        // Keycloak encodes scopes in the "scope" claim; Spring prefixes them
+                        // with SCOPE_ so "record-locator" → SCOPE_record-locator.
+                        .anyRequest().hasAuthority("SCOPE_record-locator"))
+                .oauth2ResourceServer(oauth2 -> oauth2
+                        .jwt(jwt -> jwt.jwtAuthenticationConverter(keycloakJwtConverter())))
                 .exceptionHandling(ex -> ex
                         // Return 401 with WWW-Authenticate: Bearer when no/invalid token
                         .authenticationEntryPoint(new BearerTokenAuthenticationEntryPoint())
-                        // Return 403 when authenticated but lacking required scope/role
+                        // Return 403 when authenticated but lacking the record-locator scope
                         .accessDeniedHandler(new BearerTokenAccessDeniedHandler()))
                 .addFilterBefore(mtlsHeaderFilter, BearerTokenAuthenticationFilter.class);
         return http.build();
+    }
+
+    /**
+     * Keycloak puts granted scopes in the JWT "scope" claim as a space-separated
+     * string (e.g. "openid profile record-locator"). The default Spring converter
+     * reads "scope" and prefixes each value with "SCOPE_", producing the authority
+     * SCOPE_record-locator that the filter chain checks above.
+     *
+     * No custom roles mapping needed: scope-based access is sufficient here.
+     * If role-based access is needed later, add a second converter that reads
+     * realm_access.roles or resource_access.<client>.roles from the Keycloak token.
+     */
+    @Bean
+    public JwtAuthenticationConverter keycloakJwtConverter() {
+        JwtGrantedAuthoritiesConverter scopeConverter = new JwtGrantedAuthoritiesConverter();
+        // Keycloak uses "scope" (the default), no override needed.
+        // Prefix stays "SCOPE_" (the default).
+        JwtAuthenticationConverter converter = new JwtAuthenticationConverter();
+        converter.setJwtGrantedAuthoritiesConverter(scopeConverter);
+        return converter;
     }
 
     /**
