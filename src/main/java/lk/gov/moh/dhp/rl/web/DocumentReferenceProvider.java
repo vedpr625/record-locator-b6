@@ -19,6 +19,11 @@ import lk.gov.moh.dhp.rl.search.SearchService;
 import org.hl7.fhir.r4.model.Bundle;
 import org.hl7.fhir.r4.model.DocumentReference;
 import org.hl7.fhir.r4.model.IdType;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
@@ -29,6 +34,15 @@ import java.util.UUID;
 
 @Component
 public class DocumentReferenceProvider implements IResourceProvider {
+
+    private static final Logger log = LoggerFactory.getLogger(DocumentReferenceProvider.class);
+
+    /**
+     * Standard IHE/HL7 purpose-of-use claim name in JWT.
+     * SMART on FHIR uses "purposeOfUse"; some IDPs use "purpose_of_use".
+     * We check both; the first non-null value wins.
+     */
+    private static final String[] PURPOSE_CLAIM_NAMES = {"purposeOfUse", "purpose_of_use"};
 
     private final SearchService searchService;
     private final ConsentGate consentGate;
@@ -78,6 +92,9 @@ public class DocumentReferenceProvider implements IResourceProvider {
             return emptyBundle();
         }
 
+        // Extract purpose-of-use from JWT so consent.allows() can filter results.
+        String purposeOfUse = extractPurposeOfUse();
+
         SearchQuery query = new SearchQuery(
                 phn,
                 patientName == null ? null : patientName.getValue(),
@@ -87,7 +104,8 @@ public class DocumentReferenceProvider implements IResourceProvider {
                 type == null ? null : type.getValue(),
                 facility == null ? null : facility.getValue(),
                 province == null ? null : province.getValue(),
-                identifier == null ? null : identifier.getValue());
+                identifier == null ? null : identifier.getValue(),
+                purposeOfUse);
 
         List<Pointer> pointers = searchService.search(query);
         auditService.recordSearch("ITI-67", phn, true);
@@ -110,6 +128,31 @@ public class DocumentReferenceProvider implements IResourceProvider {
             return patientIdentifier.getValue();
         }
         return null; // _name-only query — SearchService will use OpenSearch
+    }
+
+    /**
+     * Reads the purpose-of-use claim from the current request's JWT.
+     * Returns null when:
+     *   - running in dev profile (no JWT)
+     *   - the IDP does not issue a purpose claim
+     * In both cases SearchService skips the purpose-of-use filter.
+     */
+    private String extractPurposeOfUse() {
+        try {
+            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+            if (auth == null || !(auth.getPrincipal() instanceof Jwt jwt)) {
+                return null;
+            }
+            for (String claimName : PURPOSE_CLAIM_NAMES) {
+                Object value = jwt.getClaim(claimName);
+                if (value != null) {
+                    return value.toString();
+                }
+            }
+        } catch (Exception e) {
+            log.debug("could not extract purpose-of-use from JWT: {}", e.getMessage());
+        }
+        return null;
     }
 
     @Read

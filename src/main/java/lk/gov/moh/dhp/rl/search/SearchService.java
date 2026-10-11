@@ -18,9 +18,20 @@ import java.util.Optional;
  * Search routing:
  * 1. PHN-only query         → PostgreSQL directly (fast path)
  * 2. patientName query      → OpenSearch for PHN list → PostgreSQL for pointers
- * 3. PHN + patientName      → PostgreSQL using the PHN (name is ignored; client
- *                             should use one or the other, not both — if they send
- *                             both we trust the PHN as the more precise identifier)
+ * 3. PHN + patientName      → PostgreSQL using the PHN (name is ignored; if both
+ *                             are supplied, the PHN is more precise)
+ *
+ * Purpose-of-use filtering:
+ * When the caller's JWT carries a purpose-of-use claim (SearchQuery.purposeOfUse),
+ * results are post-filtered using Consent.allows().  A pointer with no purpose
+ * restriction passes through; one that restricts to a specific purpose set is
+ * excluded when the caller's purpose is not in that set.
+ *
+ * The filter is applied after PostgreSQL retrieval (not in SQL) because the
+ * purpose-of-use set is stored as a comma-separated string in the embedded
+ * Consent — adding it to the JPQL would require a LIKE / string-split that
+ * isn't portable across DBs and is harder to unit-test.  The result sets are
+ * small enough (per-patient, per-facility) that in-memory filtering is fine.
  */
 @Service
 public class SearchService {
@@ -38,11 +49,16 @@ public class SearchService {
     }
 
     public List<Pointer> search(SearchQuery query) {
+        List<Pointer> results;
+
         // Name-only path: no PHN — go via OpenSearch to find matching PHNs
         if ((query.phn() == null || query.phn().isBlank()) && query.patientName() != null) {
-            return searchByName(query);
+            results = searchByName(query);
+        } else {
+            results = searchLocal(query);
         }
-        return searchLocal(query);
+
+        return filterByPurposeOfUse(results, query.purposeOfUse());
     }
 
     /**
@@ -87,6 +103,19 @@ public class SearchService {
         return pointerRepository.searchWithinFacilities(
                 query.phn(), query.status(), dateFrom, dateTo, query.docTypeLoinc(),
                 query.identifier(), facilitiesInProvince);
+    }
+
+    /**
+     * Filters out pointers whose consent does not allow the requested purpose.
+     * When purposeOfUse is null (caller didn't supply one), no filtering is applied.
+     */
+    private List<Pointer> filterByPurposeOfUse(List<Pointer> pointers, String purposeOfUse) {
+        if (purposeOfUse == null || purposeOfUse.isBlank()) {
+            return pointers;
+        }
+        return pointers.stream()
+                .filter(p -> p.consent().allows(purposeOfUse))
+                .toList();
     }
 
     public Optional<Pointer> findById(String id) {

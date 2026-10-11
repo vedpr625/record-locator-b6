@@ -17,15 +17,17 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestTemplate;
 
+import jakarta.annotation.PostConstruct;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Uses Orthanc's Changes API (GET /changes?since=X) rather than
- * re-listing every study Orthanc has ever stored on every poll.
+ * re-listing every study on every poll.
  *
- * "since" is kept in memory, not persisted — if this process restarts,
- * we replay from 0, which just means re-checking (not re-creating,
- * findById guards that) studies already seen.
+ * "since" cursor is now persisted to the orthanc_cursor table (V5 migration)
+ * so a process restart resumes from where it left off instead of replaying
+ * all studies from 0.  The AtomicLong is still used as the in-memory hot
+ * copy; the DB is written after each page is fully processed.
  *
  * Bundle 6 / edge profile: federation and event publishing removed.
  * Pointers are saved directly to the local DB. No RabbitMQ, no forwarding.
@@ -55,19 +57,30 @@ public class OrthancPoller {
     private final ObjectMapper objectMapper;
     private final PointerFactory pointerFactory;
     private final PointerRepository pointerRepository;
+    private final OrthancCursorRepository cursorRepository;
     private final ApplicationContext applicationContext;
 
-    // AtomicLong so concurrent scheduler threads can't race on the read-modify-write.
+    // In-memory hot copy of the cursor — loaded from DB on startup.
     private final AtomicLong since = new AtomicLong(0);
 
     public OrthancPoller(RestTemplate restTemplate, ObjectMapper objectMapper,
-                          PointerFactory pointerFactory, PointerRepository pointerRepository,
-                          ApplicationContext applicationContext) {
+                         PointerFactory pointerFactory, PointerRepository pointerRepository,
+                         OrthancCursorRepository cursorRepository,
+                         ApplicationContext applicationContext) {
         this.restTemplate = restTemplate;
         this.objectMapper = objectMapper;
         this.pointerFactory = pointerFactory;
         this.pointerRepository = pointerRepository;
+        this.cursorRepository = cursorRepository;
         this.applicationContext = applicationContext;
+    }
+
+    /** Load the persisted cursor on startup so we resume rather than replay. */
+    @PostConstruct
+    void loadCursor() {
+        long persisted = cursorRepository.load();
+        since.set(persisted);
+        log.info("orthanc poller starting at cursor {}", persisted);
     }
 
     @Scheduled(fixedDelayString = "${rl.orthanc.poll-interval-ms:30000}")
@@ -100,7 +113,11 @@ public class OrthancPoller {
                 }
             }
 
-            since.set(page.path("Last").asLong(since.get()));
+            long newCursor = page.path("Last").asLong(since.get());
+            since.set(newCursor);
+            // Persist after each page so a crash mid-page replays at most one page.
+            cursorRepository.save(newCursor);
+
             done = page.path("Done").asBoolean(true);
         }
     }
@@ -117,15 +134,14 @@ public class OrthancPoller {
             return;
         }
 
-        JsonNode mainTags = study.path("MainDicomTags");
+        JsonNode mainTags    = study.path("MainDicomTags");
         JsonNode patientTags = study.path("PatientMainDicomTags");
 
         String studyInstanceUid = mainTags.path("StudyInstanceUID").asText("").trim();
-        String phn = patientTags.path("PatientID").asText("").trim();
-        // DICOM PatientName uses ^ as component separator: "Perera^Kasun^M" → keep as-is for now,
-        // OpenSearch will index it for free-text search.
-        String patientName = patientTags.path("PatientName").asText("").trim();
-        String modalities = mainTags.path("ModalitiesInStudy").asText("");
+        String phn              = patientTags.path("PatientID").asText("").trim();
+        // DICOM PatientName uses ^ as component separator: "Perera^Kasun^M"
+        String patientName      = patientTags.path("PatientName").asText("").trim();
+        String modalities       = mainTags.path("ModalitiesInStudy").asText("");
 
         if (studyInstanceUid.isBlank() || phn.isBlank()) {
             log.warn("study {} missing StudyInstanceUID or PatientID, skipping", orthancStudyId);
