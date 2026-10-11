@@ -1,0 +1,118 @@
+{
+  "realm": "bundle-5",
+  "enabled": true,
+
+  "_comment": [
+    "PARTIAL IMPORT — import this via:",
+    "  Keycloak Admin → bundle-5 realm → Realm Settings → Import (bottom of page)",
+    "  OR via Admin Console: Manage → Import",
+    "  OR via CLI: kcadm.sh create partialImport -r bundle-5 -f record-locator-realm-partial.json",
+    "",
+    "This file adds two client scopes and two clients to the existing bundle-5 realm.",
+    "It does NOT recreate the realm or touch any existing config.",
+    "",
+    "AFTER IMPORT:",
+    "  1. Go to Clients → record-locator-node → Credentials → copy the client secret",
+    "  2. Go to Clients → record-locator-api → Credentials → copy the client secret",
+    "  3. Set those secrets as env vars on your deployments (see README below)",
+    "",
+    "ENV VARS for the Record Locator app itself:",
+    "  IDP_ISSUER_URI=https://keycloak.registry.dev.internal.asthrahealthtech.com/realms/bundle-5",
+    "  (This is already the default in application.yml — only set it to override)"
+  ],
+
+  "clientScopes": [
+    {
+      "name": "record-locator:read",
+      "description": "Read-only access to FHIR endpoints (ITI-67 search, ITI-66 list, ITI-68 retrieve). Grant to clinicians and HIE consumer systems.",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "true",
+        "consent.screen.text": "Read patient document pointers from the National Record Locator"
+      },
+      "protocolMappers": [
+        {
+          "name": "record-locator:read scope mapper",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.custom.audience": "record-locator",
+            "access.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
+      "name": "record-locator:write",
+      "description": "Write access to ingest endpoints (/pointer-events, /consent-events). Grant only to hospital nodes and Bundle-2a consent webhook clients.",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "true",
+        "consent.screen.text": "Submit document pointers and consent decisions to the National Record Locator"
+      },
+      "protocolMappers": [
+        {
+          "name": "record-locator:write scope mapper",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.custom.audience": "record-locator",
+            "access.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+
+  "clients": [
+    {
+      "clientId": "record-locator-api",
+      "name": "Record Locator — FHIR API (read-only)",
+      "description": "Clinician-facing FHIR client. Gets record-locator:read scope only. Use for HIE portals, clinical workstations, and any system that queries patient document pointers.",
+      "enabled": true,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "CHANGE-ME-record-locator-api-secret",
+      "serviceAccountsEnabled": true,
+      "authorizationServicesEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "protocol": "openid-connect",
+      "attributes": {
+        "token.endpoint.auth.method": "client_secret_post"
+      },
+      "defaultClientScopes": [
+        "openid",
+        "record-locator:read"
+      ],
+      "optionalClientScopes": []
+    },
+    {
+      "clientId": "record-locator-node",
+      "name": "Record Locator — Hospital Node (read + write)",
+      "description": "Hospital node client. Gets both record-locator:read and record-locator:write scopes. Use for hospital systems that POST pointer-events and consent-events. One client per hospital, or one shared client for all nodes in dev/staging.",
+      "enabled": true,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "CHANGE-ME-record-locator-node-secret",
+      "serviceAccountsEnabled": true,
+      "authorizationServicesEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "protocol": "openid-connect",
+      "attributes": {
+        "token.endpoint.auth.method": "client_secret_post"
+      },
+      "defaultClientScopes": [
+        "openid",
+        "record-locator:read",
+        "record-locator:write"
+      ],
+      "optionalClientScopes": []
+    }
+  ]
+}

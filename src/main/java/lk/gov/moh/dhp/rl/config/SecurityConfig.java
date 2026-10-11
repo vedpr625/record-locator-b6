@@ -71,17 +71,17 @@ public class SecurityConfig {
      * Disabling CSRF is correct and required here — leaving it enabled would cause 403 on
      * every POST/PUT/DELETE from FHIR clients that do not send a CSRF token.
      *
-     * <p>JWT validation: tokens must be issued by the configured Keycloak realm
-     * (spring.security.oauth2.resourceserver.jwt.issuer-uri) and carry the
-     * "record-locator" scope. Spring validates the issuer and expiry automatically;
-     * the scope check is enforced via hasAuthority("SCOPE_record-locator").
+     * <p>Two scopes control access (both issued by the Keycloak bundle-5 realm):
+     * <ul>
+     *   <li>{@code record-locator:read}  — FHIR read-only endpoints (ITI-67/66/68).
+     *       Granted to clinicians and HIE consumer systems.</li>
+     *   <li>{@code record-locator:write} — Ingest endpoints (/pointer-events, /consent-events).
+     *       Granted only to hospital nodes and Bundle-2a consent webhook clients.</li>
+     * </ul>
      *
-     * <p>Keycloak puts scopes in the "scope" claim as a space-separated string.
-     * JwtGrantedAuthoritiesConverter reads that claim and prefixes each scope with
-     * "SCOPE_", so "record-locator" in the token becomes SCOPE_record-locator here.
-     *
-     * <p>Node-to-node endpoints (/consent-events, /pointer-events) are also protected
-     * by JWT. mTLS adds a second layer once the reverse proxy is deployed.
+     * <p>Keycloak puts scopes in the JWT "scope" claim as a space-separated string.
+     * JwtGrantedAuthoritiesConverter reads that claim and prefixes each value with
+     * "SCOPE_", so "record-locator:read" → SCOPE_record-locator:read.
      */
     @Bean
     @Profile("!dev")
@@ -92,37 +92,43 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
+                        // Health check — no auth required
                         .requestMatchers("/actuator/health").permitAll()
-                        // All other endpoints require a valid JWT with the record-locator scope.
-                        // Keycloak encodes scopes in the "scope" claim; Spring prefixes them
-                        // with SCOPE_ so "record-locator" → SCOPE_record-locator.
-                        .anyRequest().hasAuthority("SCOPE_record-locator"))
+                        // FHIR read-only (ITI-67 search, ITI-66 list, ITI-68 retrieve)
+                        // requires the read scope only — clinicians / consumer systems
+                        .requestMatchers("/fhir/**").hasAuthority("SCOPE_record-locator:read")
+                        // Ingest endpoints — hospital nodes and consent webhook only
+                        // requires the write scope (which implicitly also has read)
+                        .requestMatchers("/pointer-events", "/consent-events")
+                                .hasAuthority("SCOPE_record-locator:write")
+                        // Anything else (e.g. future endpoints) requires at least read
+                        .anyRequest().hasAuthority("SCOPE_record-locator:read"))
                 .oauth2ResourceServer(oauth2 -> oauth2
                         .jwt(jwt -> jwt.jwtAuthenticationConverter(keycloakJwtConverter())))
                 .exceptionHandling(ex -> ex
                         // Return 401 with WWW-Authenticate: Bearer when no/invalid token
                         .authenticationEntryPoint(new BearerTokenAuthenticationEntryPoint())
-                        // Return 403 when authenticated but lacking the record-locator scope
+                        // Return 403 when authenticated but lacking the required scope
                         .accessDeniedHandler(new BearerTokenAccessDeniedHandler()))
                 .addFilterBefore(mtlsHeaderFilter, BearerTokenAuthenticationFilter.class);
         return http.build();
     }
 
     /**
-     * Keycloak puts granted scopes in the JWT "scope" claim as a space-separated
-     * string (e.g. "openid profile record-locator"). The default Spring converter
-     * reads "scope" and prefixes each value with "SCOPE_", producing the authority
-     * SCOPE_record-locator that the filter chain checks above.
+     * Reads the "scope" claim from Keycloak JWTs and converts each space-separated
+     * scope value into a Spring GrantedAuthority with the "SCOPE_" prefix.
      *
-     * No custom roles mapping needed: scope-based access is sufficient here.
-     * If role-based access is needed later, add a second converter that reads
-     * realm_access.roles or resource_access.<client>.roles from the Keycloak token.
+     * Example JWT scope claim:  "openid profile record-locator:read"
+     * Resulting authorities:    [SCOPE_openid, SCOPE_profile, SCOPE_record-locator:read]
+     *
+     * The filter chain checks for SCOPE_record-locator:read or SCOPE_record-locator:write
+     * depending on the endpoint, matching the scopes defined in the Keycloak realm.
      */
     @Bean
     public JwtAuthenticationConverter keycloakJwtConverter() {
         JwtGrantedAuthoritiesConverter scopeConverter = new JwtGrantedAuthoritiesConverter();
-        // Keycloak uses "scope" (the default), no override needed.
-        // Prefix stays "SCOPE_" (the default).
+        // Keycloak uses "scope" claim (the Spring default) — no override needed.
+        // Authority prefix stays "SCOPE_" (the Spring default).
         JwtAuthenticationConverter converter = new JwtAuthenticationConverter();
         converter.setJwtGrantedAuthoritiesConverter(scopeConverter);
         return converter;
