@@ -90,15 +90,47 @@ public class OpenSearchService extends OpenSearchServicePort {
             return List.of();
         }
         try {
+            String trimmed = name.trim();
+
+            // Two-clause bool/should query:
+            //   1. phrase_prefix  (boost 3) — exact prefix match, highest relevance.
+            //      "Kasu" → "Kasun", "Per" → "Perera"
+            //   2. fuzzy best_fields (boost 1) — catches transposition / missing-letter typos.
+            //      "Kasn" → "Kasun", "Perara" → "Perera"
+            //
+            // Safety guardrails on the fuzzy clause:
+            //   fuzziness AUTO  → 1 edit for 3–5 char tokens, 2 edits for 6+ chars
+            //   prefix_length 2 → the first 2 characters must match exactly, preventing
+            //                     cross-patient false positives (e.g. "John" ≠ "Jane")
+            //
+            // Results are deduplicated by PHN in the caller, so a PHN that scores on
+            // both clauses appears only once in the final list.
             ObjectNode query = objectMapper.createObjectNode();
-            query.putObject("query")
+            ObjectNode bool = query.putObject("query").putObject("bool");
+            var should = bool.putArray("should");
+
+            // Clause 1 — prefix match (high boost)
+            should.addObject()
                     .putObject("multi_match")
-                    .put("query", name.trim())
+                    .put("query", trimmed)
                     .put("type", "phrase_prefix")
+                    .put("boost", 3)
                     .putArray("fields")
-                    .add("givenName")
-                    .add("familyName")
-                    .add("fullName");
+                    .add("givenName").add("familyName").add("fullName");
+
+            // Clause 2 — fuzzy match (low boost, safety-gated by prefix_length)
+            should.addObject()
+                    .putObject("multi_match")
+                    .put("query", trimmed)
+                    .put("type", "best_fields")
+                    .put("fuzziness", "AUTO")
+                    .put("prefix_length", 2)
+                    .put("boost", 1)
+                    .putArray("fields")
+                    .add("givenName").add("familyName").add("fullName");
+
+            bool.put("minimum_should_match", 1);
+
             query.put("size", maxNameResults);
             // Only fetch _source.phn — no need for the rest of the document
             query.putArray("_source").add("phn");

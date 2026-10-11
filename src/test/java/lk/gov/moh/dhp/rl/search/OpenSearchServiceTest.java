@@ -18,6 +18,11 @@ import static org.mockito.Mockito.*;
 
 /**
  * Unit tests for OpenSearchService — no Spring context.
+ *
+ * Name search uses a bool/should query with two clauses:
+ *   1. phrase_prefix (boost 3) — exact prefix match
+ *   2. fuzzy best_fields (boost 1, prefix_length=2) — typo tolerance
+ * These tests verify the query shape and PHN extraction, not OpenSearch scoring.
  */
 class OpenSearchServiceTest {
 
@@ -89,6 +94,26 @@ class OpenSearchServiceTest {
                 .thenReturn(response);
 
         assertThat(service.findPhnsByName("Unknown")).isEmpty();
+    }
+
+    @Test
+    void findPhnsByName_queryContainsBothPrefixAndFuzzyClauses() throws Exception {
+        // Verify the bool/should query structure — both clauses must be present
+        // so that prefix match and fuzzy match both fire against OpenSearch.
+        String response = """
+            {"hits":{"hits":[]}}
+            """;
+        ArgumentCaptor<Object> bodyCaptor = ArgumentCaptor.forClass(Object.class);
+        when(restTemplate.postForObject(anyString(), bodyCaptor.capture(), eq(String.class)))
+                .thenReturn(response);
+
+        service.findPhnsByName("Kasun");
+
+        String body = bodyCaptor.getValue().toString();
+        assertThat(body).contains("phrase_prefix");   // clause 1 — prefix match
+        assertThat(body).contains("fuzziness");        // clause 2 — fuzzy match
+        assertThat(body).contains("prefix_length");    // safety guardrail
+        assertThat(body).contains("minimum_should_match");
     }
 
     @Test
