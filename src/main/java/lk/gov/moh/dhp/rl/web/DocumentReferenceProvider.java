@@ -66,8 +66,10 @@ public class DocumentReferenceProvider implements IResourceProvider {
 
     // HAPI FHIR discovers @OptionalParam parameters by reflection and requires them
     // to be declared directly on the @Search method — a parameter object cannot be
-    // used for the method signature itself (S107 authorised here via extraction of
-    // the body into executeSearch so the @Search method remains a thin dispatcher).
+    // used for the method signature itself. S107 is suppressed here: all 10 parameters
+    // are mandatory FHIR search params defined by IHE MHD ITI-67 and cannot be reduced.
+    // The body is delegated to executeSearch() and buildQuery() to keep each method focused.
+    @SuppressWarnings("java:S107")
     @Search
     public Bundle search(
             @OptionalParam(name = DocumentReference.SP_PATIENT) ReferenceParam patient,
@@ -202,6 +204,8 @@ public class DocumentReferenceProvider implements IResourceProvider {
         return mapper.toFhir(pointer);
     }
 
+    // S6885: HAPI FHIR Bundle.setTimestamp() requires java.util.Date; Date.from(Instant) is correct interop.
+    @SuppressWarnings("java:S6885")
     private Bundle toBundle(List<Pointer> pointers) {
         Bundle bundle = new Bundle();
         bundle.setId(UUID.randomUUID().toString());
@@ -217,6 +221,7 @@ public class DocumentReferenceProvider implements IResourceProvider {
         return bundle;
     }
 
+    @SuppressWarnings("java:S6885")
     private Bundle emptyBundle() {
         Bundle bundle = new Bundle();
         bundle.setId(UUID.randomUUID().toString());

@@ -130,6 +130,9 @@ public class ListProvider implements IResourceProvider {
 
     // M-3: toListResource() was ~65 lines; extracted addSubmissionSetIdentifiers() helper
     // to bring each logical section under the SonarQube S138 method-length limit.
+    // S6885: HAPI FHIR ListResource.setDate() and ListEntryComponent.setDate() require
+    // java.util.Date; Date.from(Instant) is the correct java.time interop pattern.
+    @SuppressWarnings("java:S6885")
     private ListResource toListResource(String submissionSetId, String phn, List<Pointer> members) {
         ListResource list = new ListResource();
         // L-2: UTF-8 explicit so deterministic UUID is stable regardless of JVM default charset.
@@ -177,6 +180,8 @@ public class ListProvider implements IResourceProvider {
                 .setValue("urn:uuid:" + entryUuid));
     }
 
+    // S6885: HAPI FHIR Bundle.setTimestamp() requires java.util.Date; Date.from(Instant) is correct interop.
+    @SuppressWarnings("java:S6885")
     private Bundle toBundle(List<ListResource> lists) {
         Bundle bundle = new Bundle();
         bundle.setId(UUID.randomUUID().toString());

@@ -153,11 +153,11 @@ public class OpenSearchService extends OpenSearchServicePort {
                     "doc_as_upsert", true);
             restTemplate.postForObject(url, body, String.class);
         } catch (RestClientException e) {
-            // R-6/S-4: narrow to RestClientException (HTTP/IO errors from RestTemplate);
-            // PHN is masked — the OpenSearch index key must never appear in logs.
-            // Index failure must never fail pointer creation — the pointer is in
-            // PostgreSQL already at this point; the patient just won't appear in
-            // name searches until the index catches up (or a re-index job runs).
+            // Catch is intentionally narrow: only HTTP and IO errors from RestTemplate.
+            // PHN is masked in the log because the OpenSearch index key must not appear in logs.
+            // Index failure does not fail pointer creation; the pointer is already persisted
+            // in PostgreSQL. The patient will be absent from name searches until the index
+            // catches up via a re-index job.
             log.warn("failed to index patient *** in OpenSearch: {}", e.getMessage());
         }
     }
