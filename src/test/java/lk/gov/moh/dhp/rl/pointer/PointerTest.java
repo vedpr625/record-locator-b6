@@ -77,33 +77,33 @@ class PointerTest {
 
     @Test
     void builder_throwsWhenIdMissing() {
-        assertThatThrownBy(() -> Pointer.builder()
+        Pointer.Builder b = Pointer.builder()
                 .phn("PHN001")
                 .resourceType("DocumentReference")
-                .consent(Consent.defaultAccessible())
-                .build())
+                .consent(Consent.defaultAccessible());
+        assertThatThrownBy(b::build)
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("id");
     }
 
     @Test
     void builder_throwsWhenPhnMissing() {
-        assertThatThrownBy(() -> Pointer.builder()
+        Pointer.Builder b = Pointer.builder()
                 .id("doc-001")
                 .resourceType("DocumentReference")
-                .consent(Consent.defaultAccessible())
-                .build())
+                .consent(Consent.defaultAccessible());
+        assertThatThrownBy(b::build)
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("phn");
     }
 
     @Test
     void builder_throwsWhenConsentMissing() {
-        assertThatThrownBy(() -> Pointer.builder()
+        Pointer.Builder b = Pointer.builder()
                 .id("doc-001")
                 .phn("PHN001")
-                .resourceType("DocumentReference")
-                .build())
+                .resourceType("DocumentReference");
+        assertThatThrownBy(b::build)
                 .isInstanceOf(NullPointerException.class);
     }
 

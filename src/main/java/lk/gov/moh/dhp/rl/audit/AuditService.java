@@ -2,7 +2,6 @@ package lk.gov.moh.dhp.rl.audit;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -13,10 +12,12 @@ import org.springframework.transaction.annotation.Transactional;
  * audit event. We never let an audit write failure fail the request
  * it's auditing for - if this throws, we log it and move on.
  *
- * <p>Self-injection pattern: {@code self} is the Spring AOP proxy for this bean.
+ * <p>Self-injection pattern: {@code self} is the Spring AOP proxy for this bean,
+ * injected via constructor to satisfy S4091 (constructor injection preferred).
  * Calling {@code writeAuditRecord()} via {@code self} lets Spring intercept the
  * {@code @Transactional(REQUIRES_NEW)} on that method; a direct {@code this.writeAuditRecord()}
  * call bypasses the proxy and the transaction annotation has no effect (S3252).
+ * {@code @Lazy} breaks the circular-dependency cycle that self-injection would otherwise cause.
  */
 @Service
 public class AuditService {
@@ -26,16 +27,14 @@ public class AuditService {
     private final AuditEventRepository repository;
 
     /**
-     * Lazily injected proxy of this same bean so that {@code record()} is called
-     * through the AOP proxy and @Transactional(REQUIRES_NEW) is honoured.
-     * @Lazy breaks the circular-dependency cycle that self-injection would otherwise cause.
+     * Proxy of this same bean, injected lazily to avoid a circular dependency.
+     * Declared final so the field cannot be re-assigned after construction.
      */
-    @Autowired
-    @Lazy
-    private AuditService self;
+    private final AuditService self;
 
-    public AuditService(AuditEventRepository repository) {
+    public AuditService(AuditEventRepository repository, @Lazy AuditService self) {
         this.repository = repository;
+        this.self = self;
     }
 
     public void recordSearch(String transaction, String phn, boolean success) {

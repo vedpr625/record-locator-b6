@@ -26,6 +26,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Component;
 
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.Date;
@@ -91,32 +92,39 @@ public class DocumentReferenceProvider implements IResourceProvider {
         // as the `date` parameter in this implementation.  Treat it as an alias
         // rather than rejecting with 400, which would break MHD conformance.
         DateRangeParam effectiveDate = (date != null) ? date : period;
-        SearchQuery query = buildQuery(phn, patientName, status, effectiveDate, type, facility, province, identifier);
+        SearchParams params = new SearchParams(patientName, status, type, facility, province, identifier);
+        SearchQuery query = buildQuery(phn, effectiveDate, params);
         return executeSearch(phn, query);
     }
 
     /**
+     * Carries the optional FHIR search parameters (other than phn and date) into
+     * {@link #buildQuery} so that method stays within the 7-parameter limit (S107).
+     */
+    private record SearchParams(StringParam patientName, TokenParam status, TokenParam type,
+                                TokenParam facility, StringParam province, TokenParam identifier) {}
+
+    /**
      * Assembles a SearchQuery from the individual FHIR search parameters.
      * Extracted from search() to keep the @Search dispatcher under the
-     * SonarQube S107 parameter-count limit.
+     * SonarQube S107 parameter-count limit; SearchParams groups the remaining
+     * optional params to keep buildQuery itself within the limit.
      */
-    private SearchQuery buildQuery(String phn, StringParam patientName, TokenParam status,
-                                   DateRangeParam effectiveDate, TokenParam type,
-                                   TokenParam facility, StringParam province, TokenParam identifier) {
+    private SearchQuery buildQuery(String phn, DateRangeParam effectiveDate, SearchParams p) {
         LocalDate dateFrom = effectiveDate == null || effectiveDate.getLowerBound() == null ? null
                 : toLocalDate(effectiveDate.getLowerBound().getValue());
         LocalDate dateTo = effectiveDate == null || effectiveDate.getUpperBound() == null ? null
                 : toLocalDate(effectiveDate.getUpperBound().getValue());
         return new SearchQuery(
                 phn,
-                patientName == null ? null : patientName.getValue(),
-                parseStatus(status == null ? null : status.getValue()),
+                p.patientName() == null ? null : p.patientName().getValue(),
+                parseStatus(p.status() == null ? null : p.status().getValue()),
                 dateFrom,
                 dateTo,
-                type == null ? null : type.getValue(),
-                facility == null ? null : facility.getValue(),
-                province == null ? null : province.getValue(),
-                identifier == null ? null : identifier.getValue(),
+                p.type() == null ? null : p.type().getValue(),
+                p.facility() == null ? null : p.facility().getValue(),
+                p.province() == null ? null : p.province().getValue(),
+                p.identifier() == null ? null : p.identifier().getValue(),
                 extractPurposeOfUse());
     }
 
@@ -198,7 +206,7 @@ public class DocumentReferenceProvider implements IResourceProvider {
         Bundle bundle = new Bundle();
         bundle.setId(UUID.randomUUID().toString());
         bundle.setType(Bundle.BundleType.SEARCHSET);
-        bundle.setTimestamp(new Date());
+        bundle.setTimestamp(Date.from(Instant.now()));
         bundle.setTotal(pointers.size());
         for (Pointer pointer : pointers) {
             bundle.addEntry()
@@ -214,7 +222,7 @@ public class DocumentReferenceProvider implements IResourceProvider {
         bundle.setId(UUID.randomUUID().toString());
         bundle.setType(Bundle.BundleType.SEARCHSET);
         bundle.setTotal(0);
-        bundle.setTimestamp(new Date());
+        bundle.setTimestamp(Date.from(Instant.now()));
         return bundle;
     }
 

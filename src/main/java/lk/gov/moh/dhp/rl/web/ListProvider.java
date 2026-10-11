@@ -22,7 +22,9 @@ import org.hl7.fhir.r4.model.Reference;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import java.time.Instant;
 import java.util.Comparator;
+import java.util.Date;
 import java.util.List;
 import java.util.UUID;
 
@@ -147,11 +149,11 @@ public class ListProvider implements IResourceProvider {
         members.stream()
                 .map(Pointer::indexedAt)
                 .min(Comparator.naturalOrder())
-                .ifPresent(t -> list.setDate(java.util.Date.from(t)));
+                .ifPresent(t -> list.setDate(Date.from(t)));
         for (Pointer member : members) {
             ListResource.ListEntryComponent entry = list.addEntry();
             entry.setItem(new Reference("DocumentReference/" + member.id()));
-            entry.setDate(java.util.Date.from(member.indexedAt()));
+            entry.setDate(Date.from(member.indexedAt()));
         }
         return list;
     }
@@ -180,7 +182,7 @@ public class ListProvider implements IResourceProvider {
         bundle.setId(UUID.randomUUID().toString());
         bundle.setType(Bundle.BundleType.SEARCHSET);
         bundle.setTotal(lists.size());
-        bundle.setTimestamp(new java.util.Date());
+        bundle.setTimestamp(Date.from(Instant.now()));
         for (ListResource list : lists) {
             bundle.addEntry()
                     .setFullUrl("List/" + list.getIdElement().getIdPart())

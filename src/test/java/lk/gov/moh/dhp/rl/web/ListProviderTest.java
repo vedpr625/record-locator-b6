@@ -98,9 +98,9 @@ class ListProviderTest {
 
     @Test
     void search_noPatient_throwsInvalidRequest() {
-        assertThatThrownBy(() -> provider.search(
-                null, null,
-                null, new TokenParam("current"), null, null))
+        TokenParam current = new TokenParam("current");
+
+        assertThatThrownBy(() -> provider.search(null, null, null, current, null, null))
                 .isInstanceOf(InvalidRequestException.class)
                 .hasMessageContaining("patient");
     }
@@ -109,9 +109,11 @@ class ListProviderTest {
 
     @Test
     void search_invalidCode_throwsInvalidRequest() {
-        assertThatThrownBy(() -> provider.search(
-                new ReferenceParam("PHN001"), null,
-                new TokenParam("wrongcode"), new TokenParam("current"), null, null))
+        ReferenceParam patient = new ReferenceParam("PHN001");
+        TokenParam wrongCode = new TokenParam("wrongcode");
+        TokenParam current = new TokenParam("current");
+
+        assertThatThrownBy(() -> provider.search(patient, null, wrongCode, current, null, null))
                 .isInstanceOf(InvalidRequestException.class)
                 .hasMessageContaining("submissionset");
     }
@@ -159,9 +161,10 @@ class ListProviderTest {
     void search_unknownStatus_throws400() {
         // M-5: unknown status values now throw InvalidRequestException (400) instead of
         // silently falling back to CURRENT, matching the FHIR spec and DocumentReferenceProvider.
-        assertThatThrownBy(() -> provider.search(
-                new ReferenceParam("PHN001"), null,
-                null, new TokenParam("anything-else"), null, null))
+        ReferenceParam patient = new ReferenceParam("PHN001");
+        TokenParam badStatus = new TokenParam("anything-else");
+
+        assertThatThrownBy(() -> provider.search(patient, null, null, badStatus, null, null))
                 .isInstanceOf(InvalidRequestException.class)
                 .hasMessageContaining("Unknown status value");
     }

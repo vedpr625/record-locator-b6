@@ -63,30 +63,17 @@ public class SecurityConfig {
     }
 
     /**
-     * /consent-events and /pointer-events are node-to-node (Bundle 2a
-     * pushing consent changes, a child node pushing pointers), not
-     * ordinary end-user traffic. The real design is mTLS enforced at
-     * a reverse proxy (nginx/Envoy) in front of this app, with the
-     * proxy forwarding a header ONLY on successful client-certificate
-     * verification - this app never touches certificates itself.
-     *
-     * Deliberately NOT enabled yet - waiting on real certificates and
-     * the proxy actually being deployed. rl.security.mtls-header-enabled
-     * defaults to false, so today both endpoints still only sit
-     * behind the ordinary bearer-token rule below - the SAME
-     * documented gap as before, now with the actual mechanism built
-     * and ready rather than left to write later. Flip the property to
-     * true once nginx is genuinely in front of this app and verified
-     * to be stripping/overwriting any client-supplied value of the
-     * header name below (a caller must never be able to set this
-     * header themselves and have it trusted).
-     */
-    /**
      * S4502: CSRF is intentionally disabled.
      * This is a stateless REST/FHIR API that uses Bearer (JWT) tokens, not cookies.
      * CSRF attacks require a browser session with cookies; they cannot exploit Bearer-token auth.
      * Disabling CSRF is correct and required here — leaving it enabled would cause 403 on
      * every POST/PUT/DELETE from FHIR clients that do not send a CSRF token.
+     *
+     * <p>Node-to-node endpoints (/consent-events, /pointer-events) are also protected here.
+     * The real design is mTLS enforced at a reverse proxy (nginx/Envoy) in front of this app,
+     * with the proxy forwarding a header ONLY on successful client-certificate verification.
+     * {@code rl.security.mtls-header-enabled} defaults to false; flip it to true once the
+     * proxy is deployed and verified to strip any client-supplied header value.
      */
     @Bean
     @Profile("!dev")

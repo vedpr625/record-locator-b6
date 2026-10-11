@@ -76,8 +76,9 @@ class BinaryProviderTest {
     @Test
     void read_notFound_throws404() {
         when(searchService.findById("missing")).thenReturn(Optional.empty());
+        IdType id = new IdType("missing");
 
-        assertThatThrownBy(() -> provider.read(new IdType("missing"), response))
+        assertThatThrownBy(() -> provider.read(id, response))
                 .isInstanceOf(ResourceNotFoundException.class);
     }
 
@@ -89,8 +90,9 @@ class BinaryProviderTest {
                 "https://pacs.hospital.lk/old", Pointer.Status.SUPERSEDED);
         when(searchService.findById("doc-old")).thenReturn(Optional.of(p));
         doNothing().when(consentGate).checkRetrieve(anyString(), anyString(), anyString(), anyString());
+        IdType id = new IdType("doc-old");
 
-        assertThatThrownBy(() -> provider.read(new IdType("doc-old"), response))
+        assertThatThrownBy(() -> provider.read(id, response))
                 .isInstanceOf(ResourceGoneException.class)
                 .hasMessageContaining("superseded");
 
@@ -109,8 +111,9 @@ class BinaryProviderTest {
         Pointer p = pointer("doc-1", "PHN001", contentUrl, Pointer.Status.CURRENT);
         when(searchService.findById("doc-1")).thenReturn(Optional.of(p));
         doNothing().when(consentGate).checkRetrieve(anyString(), anyString(), anyString(), anyString());
+        IdType id = new IdType("doc-1");
 
-        assertThatThrownBy(() -> provider.read(new IdType("doc-1"), response))
+        assertThatThrownBy(() -> provider.read(id, response))
                 .isInstanceOf(ResourceNotFoundException.class)
                 .hasMessageContaining(expectedMessage.trim());
 
@@ -143,8 +146,9 @@ class BinaryProviderTest {
         when(searchService.findById("doc-1")).thenReturn(Optional.of(p));
         doThrow(new ResourceNotFoundException("blocked"))
                 .when(consentGate).checkRetrieve("PHN001", "doc-1", "Binary", "ITI-68");
+        IdType id = new IdType("doc-1");
 
-        assertThatThrownBy(() -> provider.read(new IdType("doc-1"), response))
+        assertThatThrownBy(() -> provider.read(id, response))
                 .isInstanceOf(ResourceNotFoundException.class);
     }
 
@@ -157,8 +161,9 @@ class BinaryProviderTest {
                 "https://pacs.hospital.lk/path with spaces", Pointer.Status.CURRENT);
         when(searchService.findById("doc-1")).thenReturn(Optional.of(p));
         doNothing().when(consentGate).checkRetrieve(anyString(), anyString(), anyString(), anyString());
+        IdType id = new IdType("doc-1");
 
-        assertThatThrownBy(() -> provider.read(new IdType("doc-1"), response))
+        assertThatThrownBy(() -> provider.read(id, response))
                 .isInstanceOf(ResourceNotFoundException.class)
                 .hasMessageContaining("invalid content URL");
 

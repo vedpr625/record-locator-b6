@@ -41,9 +41,9 @@ class FacilityTest {
     @Test
     void constructor_withBlankValues_doesNotThrow() {
         Facility facility = new Facility("", "", "");
-        assertThat(facility.hin()).isEqualTo("");
-        assertThat(facility.name()).isEqualTo("");
-        assertThat(facility.provinceCode()).isEqualTo("");
+        assertThat(facility.hin()).isEmpty();
+        assertThat(facility.name()).isEmpty();
+        assertThat(facility.provinceCode()).isEmpty();
     }
 
     @Test

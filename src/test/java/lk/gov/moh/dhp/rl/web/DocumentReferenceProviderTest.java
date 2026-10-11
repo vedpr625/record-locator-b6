@@ -18,7 +18,6 @@ import org.hl7.fhir.r4.model.IdType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
-import org.mockito.Mockito;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -167,10 +166,11 @@ class DocumentReferenceProviderTest {
     @Test
     void search_unknownStatus_throws400() {
         when(consentGate.checkSearch(any(), any())).thenReturn(false);
+        ReferenceParam patient = new ReferenceParam("PHN001");
+        TokenParam badStatus = new TokenParam("invalid-status");
 
         assertThatThrownBy(() -> provider.search(
-                new ReferenceParam("PHN001"), null,
-                new TokenParam("invalid-status"), null, null, null, null, null, null, null))
+                patient, null, badStatus, null, null, null, null, null, null, null))
                 .isInstanceOf(InvalidRequestException.class)
                 .hasMessageContaining("invalid-status");
     }
@@ -234,10 +234,10 @@ class DocumentReferenceProviderTest {
     void search_searchThrows_auditsFailure() {
         when(consentGate.checkSearch(any(), any())).thenReturn(false);
         when(searchService.search(any())).thenThrow(new RuntimeException("db down"));
+        ReferenceParam patient = new ReferenceParam("PHN001");
 
         assertThatThrownBy(() -> provider.search(
-                new ReferenceParam("PHN001"), null,
-                null, null, null, null, null, null, null, null))
+                patient, null, null, null, null, null, null, null, null, null))
                 .isInstanceOf(RuntimeException.class);
 
         verify(auditService).recordSearch("ITI-67", "PHN001", false);
@@ -344,8 +344,9 @@ class DocumentReferenceProviderTest {
     @Test
     void read_notFound_throws404() {
         when(searchService.findById("missing")).thenReturn(Optional.empty());
+        IdType id = new IdType("missing");
 
-        assertThatThrownBy(() -> provider.read(new IdType("missing")))
+        assertThatThrownBy(() -> provider.read(id))
                 .isInstanceOf(ResourceNotFoundException.class);
     }
 
@@ -355,8 +356,9 @@ class DocumentReferenceProviderTest {
         when(searchService.findById("doc-1")).thenReturn(Optional.of(p));
         doThrow(new ResourceNotFoundException("blocked"))
                 .when(consentGate).checkRetrieve("PHN001", "doc-1", "DocumentReference", "ITI-67");
+        IdType id = new IdType("doc-1");
 
-        assertThatThrownBy(() -> provider.read(new IdType("doc-1")))
+        assertThatThrownBy(() -> provider.read(id))
                 .isInstanceOf(ResourceNotFoundException.class);
     }
 

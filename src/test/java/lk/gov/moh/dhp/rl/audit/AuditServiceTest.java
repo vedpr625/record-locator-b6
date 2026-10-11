@@ -5,11 +5,10 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.test.util.ReflectionTestUtils;
 
-import static org.mockito.Mockito.mock;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.mock;
 
 /**
  * Unit tests for AuditService.
@@ -25,10 +24,16 @@ class AuditServiceTest {
     @BeforeEach
     void setUp() {
         repository = mock(AuditEventRepository.class);
-        auditService = new AuditService(repository);
-        // In unit tests there is no Spring AOP proxy, so inject self-reference manually
-        // so that recordSearch/recordRetrieve/recordConsentBlocked can call writeAuditRecord().
-        ReflectionTestUtils.setField(auditService, "self", auditService);
+        // In unit tests there is no Spring AOP proxy.  The constructor now accepts
+        // the self reference via constructor injection (S4091-compliant).
+        //
+        // We build a two-instance chain: the inner instance is used only as the
+        // `self` delegate and only has writeAuditRecord() called on it (which does
+        // not use `self`), so passing null as its own self is safe.
+        // Both instances share the same repository mock, so verify(repository)
+        // captures saves made by either instance.
+        AuditService selfDelegate = new AuditService(repository, null);
+        auditService = new AuditService(repository, selfDelegate);
     }
 
     // ── recordSearch ──────────────────────────────────────────────────────────
