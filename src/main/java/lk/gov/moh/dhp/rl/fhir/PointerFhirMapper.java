@@ -47,6 +47,7 @@ public class PointerFhirMapper {
     private static final String IHE_IDENTIFIER_TYPE_SYSTEM =
             "https://profiles.ihe.net/ITI/MHD/CodeSystem/IHE.MHD.MHDIdentifierType";
     private static final String URN_OID_SYSTEM = "urn:ietf:rfc:3986";
+    private static final String URN_UUID_PREFIX = "urn:uuid:";
 
     @Value("${rl.home-community-id}")
     private String homeCommunityId;
@@ -97,7 +98,7 @@ public class PointerFhirMapper {
         dr.addIdentifier(new Identifier()
                 .setUse(Identifier.IdentifierUse.OFFICIAL)
                 .setSystem(URN_OID_SYSTEM)
-                .setValue("urn:uuid:" + pointer.entryUuid()));
+                .setValue(URN_UUID_PREFIX + pointer.entryUuid()));
 
         // IHE ihe-HomeCommunityId extension (strip urn:oid: prefix before wrapping).
         String bareOid = homeCommunityId.startsWith("urn:oid:")
@@ -172,13 +173,6 @@ public class PointerFhirMapper {
     }
 
     /**
-     * Builds a fresh pointer from a resource received over the wire -
-     * used both when a forwarded pointer lands from a child node and
-     * when parsing new source data. Throws if the consent extensions
-     * aren't present; a pointer with no stated consent is a protocol
-     * violation here, not something we default to accessible.
-     */
-    /**
      * Builds a fresh pointer from a resource received over the wire.
      * Used both when a forwarded pointer lands from a child node and when parsing new source data.
      * Throws if the consent extensions aren't present; a pointer with no stated consent is a
@@ -197,9 +191,9 @@ public class PointerFhirMapper {
         // Missing entryUUID isn't a protocol violation — Pointer's own constructor generates one.
         dr.getIdentifier().stream()
                 .filter(id -> URN_OID_SYSTEM.equals(id.getSystem())
-                        && id.hasValue() && id.getValue().startsWith("urn:uuid:"))
+                        && id.hasValue() && id.getValue().startsWith(URN_UUID_PREFIX))
                 .findFirst()
-                .ifPresent(id -> builder.entryUuid(id.getValue().substring("urn:uuid:".length())));
+                .ifPresent(id -> builder.entryUuid(id.getValue().substring(URN_UUID_PREFIX.length())));
 
         extractPhn(dr, builder);
         extractContent(dr, builder);

@@ -30,8 +30,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.mock;
 
 /**
  * Unit tests for DocumentReferenceProvider — no Spring context, no HAPI server.
@@ -47,10 +47,10 @@ class DocumentReferenceProviderTest {
 
     @BeforeEach
     void setUp() {
-        searchService = Mockito.mock(SearchService.class);
-        consentGate   = Mockito.mock(ConsentGate.class);
-        mapper        = Mockito.mock(PointerFhirMapper.class);
-        auditService  = Mockito.mock(AuditService.class);
+        searchService = mock(SearchService.class);
+        consentGate   = mock(ConsentGate.class);
+        mapper        = mock(PointerFhirMapper.class);
+        auditService  = mock(AuditService.class);
         provider = new DocumentReferenceProvider(searchService, consentGate, mapper, auditService);
         SecurityContextHolder.clearContext();
     }
@@ -117,7 +117,7 @@ class DocumentReferenceProviderTest {
                 new ReferenceParam("PHN001"), null,
                 null, null, null, null, null, null, null, null);
 
-        assertThat(bundle.getTotal()).isEqualTo(0);
+        assertThat(bundle.getTotal()).isZero();
         verify(searchService, never()).search(any());
         verify(auditService, never()).recordSearch(anyString(), anyString(), anyBoolean());
     }
@@ -249,9 +249,9 @@ class DocumentReferenceProviderTest {
         when(consentGate.checkSearch(any(), any())).thenReturn(false);
 
         // Set up a JWT in the SecurityContext with a purposeOfUse claim
-        Jwt jwt = Mockito.mock(Jwt.class);
+        Jwt jwt = mock(Jwt.class);
         when(jwt.getClaim("purposeOfUse")).thenReturn("TREAT");
-        Authentication auth = Mockito.mock(Authentication.class);
+        Authentication auth = mock(Authentication.class);
         when(auth.getPrincipal()).thenReturn(jwt);
         SecurityContextHolder.getContext().setAuthentication(auth);
 
@@ -269,10 +269,10 @@ class DocumentReferenceProviderTest {
         when(searchService.search(any())).thenReturn(List.of());
         when(consentGate.checkSearch(any(), any())).thenReturn(false);
 
-        Jwt jwt = Mockito.mock(Jwt.class);
+        Jwt jwt = mock(Jwt.class);
         when(jwt.getClaim("purposeOfUse")).thenReturn(null);
         when(jwt.getClaim("purpose_of_use")).thenReturn("HPAYMT");
-        Authentication auth = Mockito.mock(Authentication.class);
+        Authentication auth = mock(Authentication.class);
         when(auth.getPrincipal()).thenReturn(jwt);
         SecurityContextHolder.getContext().setAuthentication(auth);
 

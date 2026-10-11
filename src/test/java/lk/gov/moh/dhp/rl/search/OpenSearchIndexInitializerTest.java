@@ -4,7 +4,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
-import org.mockito.Mockito;
+
+import static org.mockito.Mockito.mock;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -27,7 +28,7 @@ class OpenSearchIndexInitializerTest {
 
     @BeforeEach
     void setUp() {
-        restTemplate = Mockito.mock(RestTemplate.class);
+        restTemplate = mock(RestTemplate.class);
         initializer = new OpenSearchIndexInitializer(restTemplate, objectMapper);
         ReflectionTestUtils.setField(initializer, "baseUrl", "http://opensearch:9200");
         ReflectionTestUtils.setField(initializer, "index", "rl-patients");
@@ -71,6 +72,8 @@ class OpenSearchIndexInitializerTest {
 
         // Must not propagate exception — non-fatal
         initializer.ensureIndex();
+
+        assertThat(initializer).isNotNull();
     }
 
     @Test
@@ -89,11 +92,12 @@ class OpenSearchIndexInitializerTest {
         verify(restTemplate).postForObject(anyString(), bodyCaptor.capture(), eq(String.class));
 
         String body = bodyCaptor.getValue();
-        assertThat(body).contains("\"phn\"");
-        assertThat(body).contains("\"keyword\"");
-        assertThat(body).contains("\"givenName\"");
-        assertThat(body).contains("\"familyName\"");
-        assertThat(body).contains("\"fullName\"");
-        assertThat(body).contains("\"facilityHin\"");
+        assertThat(body)
+                .contains("\"phn\"")
+                .contains("\"keyword\"")
+                .contains("\"givenName\"")
+                .contains("\"familyName\"")
+                .contains("\"fullName\"")
+                .contains("\"facilityHin\"");
     }
 }

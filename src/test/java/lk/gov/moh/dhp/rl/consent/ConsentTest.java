@@ -82,8 +82,9 @@ class ConsentTest {
     void purposeOfUseRaw_joinsWithComma() {
         Consent c = Consent.from(false, false, Set.of("TREAT", "HPAYMT"));
         String raw = c.purposeOfUseRaw();
-        assertThat(raw).contains("TREAT");
-        assertThat(raw).contains("HPAYMT");
-        assertThat(raw).contains(",");
+        assertThat(raw)
+                .contains("TREAT")
+                .contains("HPAYMT")
+                .contains(",");
     }
 }

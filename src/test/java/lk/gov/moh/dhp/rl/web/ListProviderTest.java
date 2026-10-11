@@ -12,7 +12,8 @@ import org.hl7.fhir.r4.model.Bundle;
 import org.hl7.fhir.r4.model.ListResource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.Mockito;
+
+import static org.mockito.Mockito.mock;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.Instant;
@@ -36,9 +37,9 @@ class ListProviderTest {
 
     @BeforeEach
     void setUp() {
-        searchService = Mockito.mock(SearchService.class);
-        consentGate   = Mockito.mock(ConsentGate.class);
-        auditService  = Mockito.mock(AuditService.class);
+        searchService = mock(SearchService.class);
+        consentGate   = mock(ConsentGate.class);
+        auditService  = mock(AuditService.class);
         provider = new ListProvider(searchService, consentGate, auditService);
         ReflectionTestUtils.setField(provider, "homeCommunityId", "urn:oid:2.16.840.1.113883.3.9999");
     }
@@ -78,7 +79,7 @@ class ListProviderTest {
                 null, new TokenParam("PHN002"),
                 null, new TokenParam("current"), null, null);
 
-        assertThat(bundle.getTotal()).isEqualTo(0);
+        assertThat(bundle.getTotal()).isZero();
     }
 
     @Test
@@ -89,7 +90,7 @@ class ListProviderTest {
                 new ReferenceParam("PHN001"), null,
                 null, new TokenParam("current"), null, null);
 
-        assertThat(bundle.getTotal()).isEqualTo(0);
+        assertThat(bundle.getTotal()).isZero();
         verify(searchService, never()).submissionSetsWithMembers(any(), any());
     }
 
@@ -200,7 +201,7 @@ class ListProviderTest {
                 null, new TokenParam("current"), future, null);
 
         // The set's date is before the lower bound, so it should be filtered out
-        assertThat(bundle.getTotal()).isEqualTo(0);
+        assertThat(bundle.getTotal()).isZero();
     }
 
     // ── list resource structure ───────────────────────────────────────────────
@@ -236,7 +237,7 @@ class ListProviderTest {
                 new ReferenceParam("PHN001"), null,
                 null, new TokenParam("current"), null, null);
 
-        assertThat(bundle.getTotal()).isEqualTo(0);
+        assertThat(bundle.getTotal()).isZero();
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────

@@ -96,13 +96,8 @@ public class ListProvider implements IResourceProvider {
             return true;
         }
         java.util.Date listDate = list.getDate();
-        if (date.getLowerBound() != null && listDate.before(date.getLowerBound().getValue())) {
-            return false;
-        }
-        if (date.getUpperBound() != null && listDate.after(date.getUpperBound().getValue())) {
-            return false;
-        }
-        return true;
+        return (date.getLowerBound() == null || !listDate.before(date.getLowerBound().getValue()))
+                && (date.getUpperBound() == null || !listDate.after(date.getUpperBound().getValue()));
     }
 
     // M-12: delegate to shared utility — was duplicated verbatim from DocumentReferenceProvider.

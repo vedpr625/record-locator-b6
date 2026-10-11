@@ -52,9 +52,20 @@ public class BinaryProvider implements IResourceProvider {
         this.searchService = searchService;
         this.consentGate = consentGate;
         this.auditService = auditService;
-        this.allowedHosts = allowedHostsCsv == null || allowedHostsCsv.isBlank()
-                ? Set.of()
-                : Set.of(allowedHostsCsv.split("\\s*,\\s*"));
+        // Split on commas and trim each token individually — avoids the backtracking
+        // that "\\s*,\\s*" can cause on adversarial input (SonarQube S5852).
+        if (allowedHostsCsv == null || allowedHostsCsv.isBlank()) {
+            this.allowedHosts = Set.of();
+        } else {
+            java.util.Set<String> hosts = new java.util.HashSet<>();
+            for (String token : allowedHostsCsv.split(",")) {
+                String trimmed = token.trim();
+                if (!trimmed.isEmpty()) {
+                    hosts.add(trimmed);
+                }
+            }
+            this.allowedHosts = java.util.Collections.unmodifiableSet(hosts);
+        }
     }
 
     /**

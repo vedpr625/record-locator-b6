@@ -4,11 +4,13 @@ import ca.uhn.fhir.rest.server.exceptions.ResourceNotFoundException;
 import lk.gov.moh.dhp.rl.audit.AuditService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.Mockito;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.mock;
 
 /**
  * Unit tests for ConsentGate — no Spring context.
@@ -21,8 +23,8 @@ class ConsentGateTest {
 
     @BeforeEach
     void setUp() {
-        consentService = Mockito.mock(ConsentService.class);
-        auditService = Mockito.mock(AuditService.class);
+        consentService = mock(ConsentService.class);
+        auditService = mock(AuditService.class);
         gate = new ConsentGate(consentService, auditService);
     }
 
@@ -47,17 +49,10 @@ class ConsentGateTest {
         verifyNoInteractions(auditService);
     }
 
-    @Test
-    void checkSearch_inaccessible_returnsTrueAndAudits() {
+    @ParameterizedTest(name = "{0}")
+    @ValueSource(strings = {"inaccessible_returnsTrueAndAudits", "failClosed_noConsentRecord_returnsTrueAndAudits"})
+    void checkSearch_blocked_returnsTrueAndAudits(String scenario) {
         // isAccessible() returns false when patient is opted out or no consent record
-        when(consentService.isAccessible("PHN123")).thenReturn(false);
-        assertThat(gate.checkSearch("PHN123", "ITI-67")).isTrue();
-        verify(auditService).recordConsentBlocked("PHN123", "ITI-67");
-    }
-
-    @Test
-    void checkSearch_failClosed_noConsentRecord_returnsTrueAndAudits() {
-        // Fail-closed: isAccessible() returns false when no consent record → gate blocks
         when(consentService.isAccessible("PHN123")).thenReturn(false);
         assertThat(gate.checkSearch("PHN123", "ITI-67")).isTrue();
         verify(auditService).recordConsentBlocked("PHN123", "ITI-67");

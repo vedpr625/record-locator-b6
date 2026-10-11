@@ -54,21 +54,30 @@ public class OpenSearchIndexInitializer {
         this.objectMapper = objectMapper;
     }
 
+    /**
+     * Returns true when the index already exists, false when it needs to be created.
+     * Extracted from ensureIndex() to avoid a nested try block (SonarQube S1141).
+     */
+    private boolean indexExists(String indexUrl) {
+        try {
+            ResponseEntity<Void> head = restTemplate.exchange(
+                    indexUrl, HttpMethod.HEAD, null, Void.class);
+            return head.getStatusCode() == HttpStatus.OK;
+        } catch (HttpClientErrorException.NotFound ignored) {
+            // Expected path: index does not exist yet.
+            return false;
+        }
+    }
+
     @PostConstruct
     void ensureIndex() {
         try {
             String indexUrl = baseUrl + "/" + index;
 
             // 1. Check existence — HEAD returns 200 if present, 404 if absent.
-            try {
-                ResponseEntity<Void> head = restTemplate.exchange(
-                        indexUrl, HttpMethod.HEAD, null, Void.class);
-                if (head.getStatusCode() == HttpStatus.OK) {
-                    log.info("OpenSearch index '{}' already exists", index);
-                    return;
-                }
-            } catch (HttpClientErrorException.NotFound ignored) {
-                // Expected path: index does not exist yet — fall through to create.
+            if (indexExists(indexUrl)) {
+                log.info("OpenSearch index '{}' already exists", index);
+                return;
             }
 
             // 2. Create with standard rl-patients mapping.

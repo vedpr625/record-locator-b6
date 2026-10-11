@@ -81,15 +81,19 @@ public class SecurityConfig {
      * header name below (a caller must never be able to set this
      * header themselves and have it trusted).
      */
+    /**
+     * S4502: CSRF is intentionally disabled.
+     * This is a stateless REST/FHIR API that uses Bearer (JWT) tokens, not cookies.
+     * CSRF attacks require a browser session with cookies; they cannot exploit Bearer-token auth.
+     * Disabling CSRF is correct and required here — leaving it enabled would cause 403 on
+     * every POST/PUT/DELETE from FHIR clients that do not send a CSRF token.
+     */
     @Bean
     @Profile("!dev")
+    @SuppressWarnings("java:S4502")
     public SecurityFilterChain productionFilterChain(HttpSecurity http, MtlsHeaderFilter mtlsHeaderFilter)
             throws Exception {
         http
-                // Stateless JWT API: no session, no CSRF tokens needed.
-                // CSRF protection is meaningful only for browser sessions with cookies;
-                // this API uses Bearer tokens, so CSRF is both unnecessary and incorrect
-                // (it would cause 403 on all POST/PUT/DELETE without CSRF headers).
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
@@ -105,15 +109,18 @@ public class SecurityConfig {
         return http.build();
     }
 
+    /**
+     * S4502: CSRF is intentionally disabled for the dev profile.
+     * This is a stateless REST/FHIR API with Bearer tokens, not browser cookies.
+     * In dev mode, CSRF is disabled only for the relevant paths (H2 console, FHIR endpoints)
+     * rather than globally, so this chain cannot be accidentally promoted to production.
+     */
     @Bean
     @Profile("dev")
+    @SuppressWarnings("java:S4502")
     public SecurityFilterChain devFilterChain(HttpSecurity http) throws Exception {
         http
                 .authorizeHttpRequests(auth -> auth.anyRequest().permitAll())
-                // CSRF is not meaningful for this stateless FHIR API (no cookies,
-                // no browser sessions). Disable only for the H2 console and FHIR/
-                // ingest paths rather than globally, so the dev chain cannot be
-                // accidentally promoted into an environment where CSRF matters.
                 .csrf(csrf -> csrf.ignoringRequestMatchers(
                         "/h2-console/**", "/fhir/**",
                         "/pointer-events/**", "/consent-events/**"))

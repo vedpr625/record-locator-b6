@@ -10,7 +10,8 @@ import lk.gov.moh.dhp.rl.search.PatientDocument;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
-import org.mockito.Mockito;
+
+import static org.mockito.Mockito.mock;
 
 import java.util.Optional;
 
@@ -35,9 +36,9 @@ class PointerFactoryTest {
 
     @BeforeEach
     void setUp() {
-        repo = Mockito.mock(PointerRepository.class);
-        consentRepo = Mockito.mock(PatientConsentRepository.class);
-        openSearch = Mockito.mock(OpenSearchServicePort.class);
+        repo = mock(PointerRepository.class);
+        consentRepo = mock(PatientConsentRepository.class);
+        openSearch = mock(OpenSearchServicePort.class);
         factory = new PointerFactory(repo, consentRepo, openSearch, true); // defaultAccessible = true
         when(repo.save(any())).thenAnswer(inv -> inv.getArgument(0));
         // By default, no consent record in patient_consent table

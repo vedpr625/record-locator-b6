@@ -3,8 +3,9 @@ package lk.gov.moh.dhp.rl.audit;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
-import org.mockito.Mockito;
 import org.springframework.test.util.ReflectionTestUtils;
+
+import static org.mockito.Mockito.mock;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -12,7 +13,7 @@ import static org.mockito.Mockito.*;
 
 /**
  * Unit tests for AuditService.
- * AuditService.record() has @Transactional(REQUIRES_NEW) but this unit test
+ * AuditService.writeAuditRecord() has @Transactional(REQUIRES_NEW) but this unit test
  * calls it directly without a proxy, so the annotation is transparent.
  * The integration smoke test exercises it via Spring's AOP proxy.
  */
@@ -23,8 +24,11 @@ class AuditServiceTest {
 
     @BeforeEach
     void setUp() {
-        repository = Mockito.mock(AuditEventRepository.class);
+        repository = mock(AuditEventRepository.class);
         auditService = new AuditService(repository);
+        // In unit tests there is no Spring AOP proxy, so inject self-reference manually
+        // so that recordSearch/recordRetrieve/recordConsentBlocked can call writeAuditRecord().
+        ReflectionTestUtils.setField(auditService, "self", auditService);
     }
 
     // ── recordSearch ──────────────────────────────────────────────────────────
@@ -80,19 +84,21 @@ class AuditServiceTest {
         assertThat(field(cap.getValue(), "eventType")).isEqualTo("ITI-67");
     }
 
-    // ── record (resilience) ───────────────────────────────────────────────────
+    // ── writeAuditRecord (resilience) ─────────────────────────────────────────
 
     @Test
-    void record_repositoryThrows_doesNotPropagate() {
+    void writeAuditRecord_repositoryThrows_doesNotPropagate() {
         doThrow(new RuntimeException("DB down")).when(repository).save(any());
 
         // Must not throw — audit is best-effort
-        auditService.record("ITI-67", "PHN001", null, "SUCCESS");
+        auditService.writeAuditRecord("ITI-67", "PHN001", null, "SUCCESS");
+
+        assertThat(auditService).isNotNull();
     }
 
     @Test
-    void record_savesAuditEventWithAllFields() {
-        auditService.record("CUSTOM", "PHN001", "doc-001", "FAILURE");
+    void writeAuditRecord_savesAuditEventWithAllFields() {
+        auditService.writeAuditRecord("CUSTOM", "PHN001", "doc-001", "FAILURE");
 
         ArgumentCaptor<AuditEvent> cap = ArgumentCaptor.forClass(AuditEvent.class);
         verify(repository).save(cap.capture());

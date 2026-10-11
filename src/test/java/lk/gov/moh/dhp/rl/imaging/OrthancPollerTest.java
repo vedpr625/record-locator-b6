@@ -8,8 +8,7 @@ import lk.gov.moh.dhp.rl.pointer.Pointer;
 import lk.gov.moh.dhp.rl.pointer.PointerRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
-import org.mockito.Mockito;
+import static org.mockito.Mockito.mock;
 import org.springframework.context.ApplicationContext;
 import org.springframework.http.ResponseEntity;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -37,12 +36,12 @@ class OrthancPollerTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        restTemplate = Mockito.mock(RestTemplate.class);
+        restTemplate = mock(RestTemplate.class);
         objectMapper = new ObjectMapper();
-        pointerFactory = Mockito.mock(PointerFactory.class);
-        pointerRepository = Mockito.mock(PointerRepository.class);
-        cursorRepository = Mockito.mock(OrthancCursorRepository.class);
-        applicationContext = Mockito.mock(ApplicationContext.class);
+        pointerFactory = mock(PointerFactory.class);
+        pointerRepository = mock(PointerRepository.class);
+        cursorRepository = mock(OrthancCursorRepository.class);
+        applicationContext = mock(ApplicationContext.class);
 
         poller = new OrthancPoller(
                 restTemplate, objectMapper, pointerFactory, pointerRepository,

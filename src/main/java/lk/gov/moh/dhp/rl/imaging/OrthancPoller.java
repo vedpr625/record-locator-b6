@@ -49,7 +49,7 @@ public class OrthancPoller {
     private static final int CHANGES_PAGE_SIZE = 100;
     private static final String STABLE_STUDY = "StableStudy";
     /** C-5: PHN must be exactly 10 digits — same constraint as ConsentEventRequest/PointerEventRequest. */
-    private static final Pattern PHN_PATTERN = Pattern.compile("[0-9]{10}");
+    private static final Pattern PHN_PATTERN = Pattern.compile("\\d{10}");
 
     @Value("${rl.orthanc.base-url}")
     private String orthancBaseUrl;

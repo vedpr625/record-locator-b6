@@ -2,7 +2,8 @@ package lk.gov.moh.dhp.rl.consent;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.Mockito;
+
+import static org.mockito.Mockito.mock;
 
 import java.util.Optional;
 
@@ -23,7 +24,7 @@ class ConsentServiceTest {
 
     @BeforeEach
     void setUp() {
-        patientConsentRepository = Mockito.mock(PatientConsentRepository.class);
+        patientConsentRepository = mock(PatientConsentRepository.class);
         consentService = new ConsentService(patientConsentRepository);
     }
 

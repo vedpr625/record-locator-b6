@@ -70,12 +70,12 @@ public class ConsentEventController {
         // Step 1: persist the consent decision regardless of whether any pointers
         // exist.  This row is the canonical source of truth that PointerFactory
         // reads when creating a new pointer for this PHN.
-        PatientConsent record = PatientConsent.of(
+        PatientConsent patientConsent = PatientConsent.of(
                 request.phn(),
                 request.accessible(),
                 request.locationExcluded(),
                 request.purposeOfUse());
-        patientConsentRepository.save(record);
+        patientConsentRepository.save(patientConsent);
 
         // Step 2: propagate to existing pointer rows so live search results change
         // immediately without waiting for pointer recreation.

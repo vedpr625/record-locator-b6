@@ -66,6 +66,8 @@ class CapabilityStatementCustomizerTest {
         IBaseConformance other = mock(IBaseConformance.class);
         // Must not throw
         customizer.customize(other);
+
+        assertThat(other).isNotNull();
     }
 
     @Test

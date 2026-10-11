@@ -7,7 +7,8 @@ import lk.gov.moh.dhp.rl.pointer.Pointer;
 import lk.gov.moh.dhp.rl.pointer.PointerRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.Mockito;
+
+import static org.mockito.Mockito.mock;
 
 import java.util.List;
 import java.util.Optional;
@@ -29,9 +30,9 @@ class SearchServiceTest {
 
     @BeforeEach
     void setUp() {
-        pointerRepository = Mockito.mock(PointerRepository.class);
-        facilityRepository = Mockito.mock(FacilityRepository.class);
-        openSearchService = Mockito.mock(OpenSearchServicePort.class);
+        pointerRepository = mock(PointerRepository.class);
+        facilityRepository = mock(FacilityRepository.class);
+        openSearchService = mock(OpenSearchServicePort.class);
         searchService = new SearchService(pointerRepository, facilityRepository, openSearchService);
     }
 
@@ -146,7 +147,7 @@ class SearchServiceTest {
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private Pointer mockPointer(String phn, Consent consent) {
-        Pointer p = Mockito.mock(Pointer.class);
+        Pointer p = mock(Pointer.class);
         when(p.phn()).thenReturn(phn);
         when(p.consent()).thenReturn(consent);
         when(p.status()).thenReturn(Pointer.Status.CURRENT);

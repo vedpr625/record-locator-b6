@@ -119,7 +119,9 @@ class PointerRepositoryTest {
 
         assertThat(updated).isEqualTo(2);
         List<Pointer> all = repo.findAllByPhn("PHN001");
-        assertThat(all).allSatisfy(p -> assertThat(p.consent().isAccessible()).isFalse());
+        // Check list is non-empty before allSatisfy (SonarQube S5961: test emptiness first)
+        assertThat(all).isNotEmpty()
+                .allSatisfy(p -> assertThat(p.consent().isAccessible()).isFalse());
     }
 
     @Test

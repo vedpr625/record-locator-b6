@@ -25,7 +25,7 @@ public record PointerEventRequest(
         @NotBlank String id,
 
         /** Patient Health Number — national patient identifier from the Client Registry. */
-        @NotBlank @Pattern(regexp = "[0-9]{10}", message = "phn must be exactly 10 digits") String phn,
+        @NotBlank @Pattern(regexp = "\\d{10}", message = "phn must be exactly 10 digits") String phn,
 
         /** Display name (optional). Used only for OpenSearch patient-name indexing. */
         String patientName,

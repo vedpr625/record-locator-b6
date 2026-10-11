@@ -43,6 +43,7 @@ public class DocumentReferenceProvider implements IResourceProvider {
      * We check both; the first non-null value wins.
      */
     private static final String[] PURPOSE_CLAIM_NAMES = {"purposeOfUse", "purpose_of_use"};
+    private static final String ITI_67 = "ITI-67";
 
     private final SearchService searchService;
     private final ConsentGate consentGate;
@@ -62,6 +63,10 @@ public class DocumentReferenceProvider implements IResourceProvider {
         return DocumentReference.class;
     }
 
+    // HAPI FHIR discovers @OptionalParam parameters by reflection and requires them
+    // to be declared directly on the @Search method — a parameter object cannot be
+    // used for the method signature itself (S107 authorised here via extraction of
+    // the body into executeSearch so the @Search method remains a thin dispatcher).
     @Search
     public Bundle search(
             @OptionalParam(name = DocumentReference.SP_PATIENT) ReferenceParam patient,
@@ -82,32 +87,47 @@ public class DocumentReferenceProvider implements IResourceProvider {
             @OptionalParam(name = "_name") StringParam patientName) {
 
         String phn = resolvePhn(patient, patientIdentifier);
-
-        if (consentGate.checkSearch(phn, "ITI-67")) {
-            return emptyBundle();
-        }
-
-        // Extract purpose-of-use from JWT so consent.allows() can filter results.
-        String purposeOfUse = extractPurposeOfUse();
-
         // M-5: the IHE MHD ITI-67 `period` parameter maps to the same date range
         // as the `date` parameter in this implementation.  Treat it as an alias
         // rather than rejecting with 400, which would break MHD conformance.
         DateRangeParam effectiveDate = (date != null) ? date : period;
+        SearchQuery query = buildQuery(phn, patientName, status, effectiveDate, type, facility, province, identifier);
+        return executeSearch(phn, query);
+    }
 
-        SearchQuery query = new SearchQuery(
+    /**
+     * Assembles a SearchQuery from the individual FHIR search parameters.
+     * Extracted from search() to keep the @Search dispatcher under the
+     * SonarQube S107 parameter-count limit.
+     */
+    private SearchQuery buildQuery(String phn, StringParam patientName, TokenParam status,
+                                   DateRangeParam effectiveDate, TokenParam type,
+                                   TokenParam facility, StringParam province, TokenParam identifier) {
+        LocalDate dateFrom = effectiveDate == null || effectiveDate.getLowerBound() == null ? null
+                : toLocalDate(effectiveDate.getLowerBound().getValue());
+        LocalDate dateTo = effectiveDate == null || effectiveDate.getUpperBound() == null ? null
+                : toLocalDate(effectiveDate.getUpperBound().getValue());
+        return new SearchQuery(
                 phn,
                 patientName == null ? null : patientName.getValue(),
                 parseStatus(status == null ? null : status.getValue()),
-                effectiveDate == null || effectiveDate.getLowerBound() == null ? null
-                        : toLocalDate(effectiveDate.getLowerBound().getValue()),
-                effectiveDate == null || effectiveDate.getUpperBound() == null ? null
-                        : toLocalDate(effectiveDate.getUpperBound().getValue()),
+                dateFrom,
+                dateTo,
                 type == null ? null : type.getValue(),
                 facility == null ? null : facility.getValue(),
                 province == null ? null : province.getValue(),
                 identifier == null ? null : identifier.getValue(),
-                purposeOfUse);
+                extractPurposeOfUse());
+    }
+
+    /**
+     * Applies consent check, runs the search, audits the outcome, and returns the bundle.
+     * Extracted from search() to keep each method focused on a single concern.
+     */
+    private Bundle executeSearch(String phn, SearchQuery query) {
+        if (consentGate.checkSearch(phn, ITI_67)) {
+            return emptyBundle();
+        }
 
         // H-4: audit outcome reflects the actual result, not an unconditional
         // SUCCESS.  A downstream exception after this call records FAILURE.
@@ -115,10 +135,10 @@ public class DocumentReferenceProvider implements IResourceProvider {
         try {
             pointers = searchService.search(query);
         } catch (Exception ex) {
-            auditService.recordSearch("ITI-67", phn, false);
+            auditService.recordSearch(ITI_67, phn, false);
             throw ex;
         }
-        auditService.recordSearch("ITI-67", phn, true);
+        auditService.recordSearch(ITI_67, phn, true);
 
         return toBundle(pointers);
     }
@@ -168,8 +188,8 @@ public class DocumentReferenceProvider implements IResourceProvider {
         Pointer pointer = searchService.findById(resourceId)
                 .orElseThrow(() -> new ResourceNotFoundException("DocumentReference/" + resourceId));
 
-        consentGate.checkRetrieve(pointer.phn(), resourceId, "DocumentReference", "ITI-67");
-        auditService.recordSearch("ITI-67", pointer.phn(), true);
+        consentGate.checkRetrieve(pointer.phn(), resourceId, "DocumentReference", ITI_67);
+        auditService.recordSearch(ITI_67, pointer.phn(), true);
 
         return mapper.toFhir(pointer);
     }

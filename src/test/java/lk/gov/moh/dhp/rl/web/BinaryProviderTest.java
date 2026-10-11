@@ -12,7 +12,10 @@ import org.hl7.fhir.r4.model.Binary;
 import org.hl7.fhir.r4.model.IdType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.Mockito;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+
+import static org.mockito.Mockito.mock;
 
 import java.util.Optional;
 
@@ -34,10 +37,10 @@ class BinaryProviderTest {
 
     @BeforeEach
     void setUp() {
-        searchService = Mockito.mock(SearchService.class);
-        consentGate   = Mockito.mock(ConsentGate.class);
-        auditService  = Mockito.mock(AuditService.class);
-        response      = Mockito.mock(HttpServletResponse.class);
+        searchService = mock(SearchService.class);
+        consentGate   = mock(ConsentGate.class);
+        auditService  = mock(AuditService.class);
+        response      = mock(HttpServletResponse.class);
 
         // Build with allowed hosts including our test host
         provider = new BinaryProvider(searchService, consentGate, auditService,
@@ -54,7 +57,7 @@ class BinaryProviderTest {
     // ── happy path: redirect ─────────────────────────────────────────────────
 
     @Test
-    void read_validPointer_issues307RedirectAndReturnsNull() throws Exception {
+    void read_validPointer_issues307RedirectAndReturnsNull() {
         Pointer p = pointer("img-1", "PHN001",
                 "https://pacs.hospital.lk/wado/img-1", Pointer.Status.CURRENT);
         when(searchService.findById("img-1")).thenReturn(Optional.of(p));
@@ -94,49 +97,22 @@ class BinaryProviderTest {
         verify(auditService).recordRetrieve("PHN001", "doc-old", false);
     }
 
-    // ── null contentUrl ───────────────────────────────────────────────────────
+    // ── URL validation: null, non-HTTPS, disallowed host ──────────────────────
 
-    @Test
-    void read_nullContentUrl_throws404() {
-        Pointer p = pointer("doc-1", "PHN001", null, Pointer.Status.CURRENT);
+    @ParameterizedTest(name = "{0}")
+    @CsvSource({
+        "nullContentUrl,          ,                             no content",
+        "httpContentUrl,          http://pacs.hospital.lk/img, must use HTTPS",
+        "disallowedHost,          https://evil.example.com/img, not in the allowed list"
+    })
+    void read_invalidContentUrl_throws404(String scenario, String contentUrl, String expectedMessage) {
+        Pointer p = pointer("doc-1", "PHN001", contentUrl, Pointer.Status.CURRENT);
         when(searchService.findById("doc-1")).thenReturn(Optional.of(p));
         doNothing().when(consentGate).checkRetrieve(anyString(), anyString(), anyString(), anyString());
 
         assertThatThrownBy(() -> provider.read(new IdType("doc-1"), response))
                 .isInstanceOf(ResourceNotFoundException.class)
-                .hasMessageContaining("no content");
-
-        verify(auditService).recordRetrieve("PHN001", "doc-1", false);
-    }
-
-    // ── non-HTTPS URL ─────────────────────────────────────────────────────────
-
-    @Test
-    void read_httpContentUrl_throws404() {
-        Pointer p = pointer("doc-1", "PHN001",
-                "http://pacs.hospital.lk/img", Pointer.Status.CURRENT);
-        when(searchService.findById("doc-1")).thenReturn(Optional.of(p));
-        doNothing().when(consentGate).checkRetrieve(anyString(), anyString(), anyString(), anyString());
-
-        assertThatThrownBy(() -> provider.read(new IdType("doc-1"), response))
-                .isInstanceOf(ResourceNotFoundException.class)
-                .hasMessageContaining("must use HTTPS");
-
-        verify(auditService).recordRetrieve("PHN001", "doc-1", false);
-    }
-
-    // ── disallowed host ───────────────────────────────────────────────────────
-
-    @Test
-    void read_disallowedHost_throws404() {
-        Pointer p = pointer("doc-1", "PHN001",
-                "https://evil.example.com/img", Pointer.Status.CURRENT);
-        when(searchService.findById("doc-1")).thenReturn(Optional.of(p));
-        doNothing().when(consentGate).checkRetrieve(anyString(), anyString(), anyString(), anyString());
-
-        assertThatThrownBy(() -> provider.read(new IdType("doc-1"), response))
-                .isInstanceOf(ResourceNotFoundException.class)
-                .hasMessageContaining("not in the allowed list");
+                .hasMessageContaining(expectedMessage.trim());
 
         verify(auditService).recordRetrieve("PHN001", "doc-1", false);
     }

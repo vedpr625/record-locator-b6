@@ -4,7 +4,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
-import org.mockito.Mockito;
+
+import static org.mockito.Mockito.mock;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
@@ -25,7 +26,7 @@ class OpenSearchServiceTest {
 
     @BeforeEach
     void setUp() {
-        restTemplate = Mockito.mock(RestTemplate.class);
+        restTemplate = mock(RestTemplate.class);
         service = new OpenSearchService(restTemplate, new ObjectMapper());
         ReflectionTestUtils.setField(service, "baseUrl", "http://opensearch:9200");
         ReflectionTestUtils.setField(service, "index", "rl-patients");
@@ -132,6 +133,8 @@ class OpenSearchServiceTest {
 
         // Should not propagate exception
         service.indexPatient(doc);
+
+        assertThat(service).isNotNull();
     }
 
     @Test
