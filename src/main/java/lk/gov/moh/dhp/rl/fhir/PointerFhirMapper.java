@@ -10,12 +10,12 @@ import org.hl7.fhir.r4.model.DocumentReference;
 import org.hl7.fhir.r4.model.Enumerations;
 import org.hl7.fhir.r4.model.Extension;
 import org.hl7.fhir.r4.model.Identifier;
+import org.hl7.fhir.r4.model.InstantType;
 import org.hl7.fhir.r4.model.Reference;
 import org.hl7.fhir.r4.model.StringType;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
-import java.util.Date;
 import java.util.Set;
 
 /**
@@ -57,9 +57,6 @@ public class PointerFhirMapper {
 
     // M-1: toFhir() was ~120 lines; extracted helpers to bring each logical section
     // under the SonarQube S138 method-length limit.
-    // S6885: HAPI FHIR DocumentReference.setDate() requires java.util.Date; we convert
-    // from Instant (java.time) via Date.from(), which is the correct interop pattern.
-    @SuppressWarnings("java:S6885")
     public DocumentReference toFhir(Pointer pointer) {
         DocumentReference dr = new DocumentReference();
         dr.setId(pointer.id());
@@ -70,7 +67,7 @@ public class PointerFhirMapper {
         addResourceTypeMarker(dr, pointer);
         addAttachment(dr, pointer);
         addContextBlock(dr, pointer);
-        dr.setDate(Date.from(pointer.indexedAt()));
+        dr.setDateElement(new InstantType(pointer.indexedAt().toString()));
         addConsentExtensions(dr, pointer.consent());
         if (pointer.submissionSetId() != null) {
             dr.addExtension(new Extension(EXT_SUBMISSION_SET, new StringType(pointer.submissionSetId())));

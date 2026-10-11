@@ -19,6 +19,7 @@ import lk.gov.moh.dhp.rl.search.SearchService;
 import org.hl7.fhir.r4.model.Bundle;
 import org.hl7.fhir.r4.model.DocumentReference;
 import org.hl7.fhir.r4.model.IdType;
+import org.hl7.fhir.r4.model.InstantType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.core.Authentication;
@@ -26,7 +27,6 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Component;
 
-import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.Date;
@@ -204,13 +204,11 @@ public class DocumentReferenceProvider implements IResourceProvider {
         return mapper.toFhir(pointer);
     }
 
-    // S6885: HAPI FHIR Bundle.setTimestamp() requires java.util.Date; Date.from(Instant) is correct interop.
-    @SuppressWarnings("java:S6885")
     private Bundle toBundle(List<Pointer> pointers) {
         Bundle bundle = new Bundle();
         bundle.setId(UUID.randomUUID().toString());
         bundle.setType(Bundle.BundleType.SEARCHSET);
-        bundle.setTimestamp(Date.from(Instant.now()));
+        bundle.setTimestampElement(InstantType.now());
         bundle.setTotal(pointers.size());
         for (Pointer pointer : pointers) {
             bundle.addEntry()
@@ -221,13 +219,12 @@ public class DocumentReferenceProvider implements IResourceProvider {
         return bundle;
     }
 
-    @SuppressWarnings("java:S6885")
     private Bundle emptyBundle() {
         Bundle bundle = new Bundle();
         bundle.setId(UUID.randomUUID().toString());
         bundle.setType(Bundle.BundleType.SEARCHSET);
         bundle.setTotal(0);
-        bundle.setTimestamp(Date.from(Instant.now()));
+        bundle.setTimestampElement(InstantType.now());
         return bundle;
     }
 

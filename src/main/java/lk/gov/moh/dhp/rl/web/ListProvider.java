@@ -22,9 +22,10 @@ import org.hl7.fhir.r4.model.Reference;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
-import java.time.Instant;
+import org.hl7.fhir.r4.model.DateTimeType;
+import org.hl7.fhir.r4.model.InstantType;
+
 import java.util.Comparator;
-import java.util.Date;
 import java.util.List;
 import java.util.UUID;
 
@@ -130,9 +131,6 @@ public class ListProvider implements IResourceProvider {
 
     // M-3: toListResource() was ~65 lines; extracted addSubmissionSetIdentifiers() helper
     // to bring each logical section under the SonarQube S138 method-length limit.
-    // S6885: HAPI FHIR ListResource.setDate() and ListEntryComponent.setDate() require
-    // java.util.Date; Date.from(Instant) is the correct java.time interop pattern.
-    @SuppressWarnings("java:S6885")
     private ListResource toListResource(String submissionSetId, String phn, List<Pointer> members) {
         ListResource list = new ListResource();
         // L-2: UTF-8 explicit so deterministic UUID is stable regardless of JVM default charset.
@@ -152,11 +150,11 @@ public class ListProvider implements IResourceProvider {
         members.stream()
                 .map(Pointer::indexedAt)
                 .min(Comparator.naturalOrder())
-                .ifPresent(t -> list.setDate(Date.from(t)));
+                .ifPresent(t -> list.setDateElement(new DateTimeType(t.toString())));
         for (Pointer member : members) {
             ListResource.ListEntryComponent entry = list.addEntry();
             entry.setItem(new Reference("DocumentReference/" + member.id()));
-            entry.setDate(Date.from(member.indexedAt()));
+            entry.setDateElement(new DateTimeType(member.indexedAt().toString()));
         }
         return list;
     }
@@ -180,14 +178,12 @@ public class ListProvider implements IResourceProvider {
                 .setValue("urn:uuid:" + entryUuid));
     }
 
-    // S6885: HAPI FHIR Bundle.setTimestamp() requires java.util.Date; Date.from(Instant) is correct interop.
-    @SuppressWarnings("java:S6885")
     private Bundle toBundle(List<ListResource> lists) {
         Bundle bundle = new Bundle();
         bundle.setId(UUID.randomUUID().toString());
         bundle.setType(Bundle.BundleType.SEARCHSET);
         bundle.setTotal(lists.size());
-        bundle.setTimestamp(Date.from(Instant.now()));
+        bundle.setTimestampElement(InstantType.now());
         for (ListResource list : lists) {
             bundle.addEntry()
                     .setFullUrl("List/" + list.getIdElement().getIdPart())
