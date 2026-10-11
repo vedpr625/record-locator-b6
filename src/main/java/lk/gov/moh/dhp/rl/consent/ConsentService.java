@@ -1,5 +1,6 @@
 package lk.gov.moh.dhp.rl.consent;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 /**
@@ -9,33 +10,43 @@ import org.springframework.stereotype.Service;
  * network hop on every search. Instead the webhook keeps the
  * patient_consent table current and this class reads it in O(1).
  *
- * <p>Fail-closed design: if no consent record exists for the PHN (patient
- * never registered, consent webhook not yet active, or data missing)
- * {@code isAccessible} returns {@code false} — data is withheld rather
- * than accidentally exposed.
+ * <p>Default behaviour when no consent record exists is controlled by
+ * {@code rl.consent.default-accessible} (default: {@code true}):
+ * <ul>
+ *   <li>{@code true}  — opt-out model (Sri Lanka national deployment):
+ *       data is accessible unless the patient has explicitly opted out.
+ *       No consent record → accessible.</li>
+ *   <li>{@code false} — opt-in / fail-closed model: data is withheld
+ *       unless a consent record with {@code accessible=true} exists.
+ *       No consent record → blocked.</li>
+ * </ul>
  */
 @Service
 public class ConsentService {
 
     private final PatientConsentRepository patientConsentRepository;
+    private final boolean defaultAccessible;
 
-    public ConsentService(PatientConsentRepository patientConsentRepository) {
+    public ConsentService(PatientConsentRepository patientConsentRepository,
+                          @Value("${rl.consent.default-accessible:true}") boolean defaultAccessible) {
         this.patientConsentRepository = patientConsentRepository;
+        this.defaultAccessible = defaultAccessible;
     }
 
     /**
-     * Returns {@code true} when the patient has an active consent record
-     * that allows access to their data.
+     * Returns {@code true} when the patient's data is accessible.
      *
-     * <p>Returns {@code false} (fail-closed) when:
-     * <ul>
-     *   <li>No consent record exists for this PHN.</li>
-     *   <li>The patient has opted out ({@code accessible = false}).</li>
-     * </ul>
+     * <p>If a {@code patient_consent} record exists for this PHN, its
+     * {@code accessible} flag is the authoritative answer (opt-in or opt-out
+     * has been explicitly recorded).
+     *
+     * <p>If no record exists, falls back to {@code rl.consent.default-accessible}:
+     * {@code true} for Sri Lanka's opt-out deployment (accessible by default),
+     * {@code false} for opt-in / fail-closed deployments.
      */
     public boolean isAccessible(String phn) {
         return patientConsentRepository.findByPhn(phn)
                 .map(PatientConsent::isAccessible)
-                .orElse(false);
+                .orElse(defaultAccessible);
     }
 }
