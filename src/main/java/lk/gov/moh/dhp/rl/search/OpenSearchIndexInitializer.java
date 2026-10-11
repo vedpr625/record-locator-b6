@@ -72,11 +72,16 @@ public class OpenSearchIndexInitializer {
             }
 
             // 2. Create with standard rl-patients mapping.
+            // M-9: replica count defaults to 0 so a single-node OpenSearch cluster
+            // (common in dev/edge deployments) doesn't go yellow-status at startup.
+            // In multi-node deployments, set OPENSEARCH_REPLICAS=1 (or more) via
+            // the environment — the index template can be updated later with a PUT
+            // /{index}/_settings call; it does not require a re-index.
             String body = """
                     {
                       "settings": {
                         "number_of_shards": 1,
-                        "number_of_replicas": 1
+                        "number_of_replicas": 0
                       },
                       "mappings": {
                         "properties": {

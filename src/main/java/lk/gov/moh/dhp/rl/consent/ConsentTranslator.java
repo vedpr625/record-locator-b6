@@ -22,7 +22,8 @@ public class ConsentTranslator {
 
         // Guard all provision sub-field accesses — a DENY provision might omit
         // securityLabel/purpose, and a full-access grant has no provision at all.
-        org.hl7.fhir.r4.model.Consent.ConsentProvisionComponent provision =
+        // Note: HAPI 7.x uses provisionComponent (lowercase p) as the inner class name.
+        org.hl7.fhir.r4.model.Consent.provisionComponent provision =
                 fhirConsent.hasProvision() ? fhirConsent.getProvision() : null;
 
         boolean locationExcluded = provision != null

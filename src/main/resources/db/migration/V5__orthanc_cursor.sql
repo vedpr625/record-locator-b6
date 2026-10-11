@@ -5,7 +5,7 @@
 -- The row is created lazily on first write (INSERT … ON CONFLICT DO UPDATE).
 
 CREATE TABLE IF NOT EXISTS orthanc_cursor (
-    id      VARCHAR(32)  NOT NULL DEFAULT 'default' PRIMARY KEY,
-    seq     BIGINT       NOT NULL DEFAULT 0,
-    updated TIMESTAMPTZ  NOT NULL DEFAULT now()
+    id      VARCHAR(32)              NOT NULL DEFAULT 'default' PRIMARY KEY,
+    seq     BIGINT                   NOT NULL DEFAULT 0,
+    updated TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
 );

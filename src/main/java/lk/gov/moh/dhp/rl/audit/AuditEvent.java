@@ -47,4 +47,13 @@ public class AuditEvent {
     static AuditEvent of(String eventType, String phn, String resourceId, String outcome) {
         return new AuditEvent(eventType, phn, resourceId, outcome);
     }
+
+    // L-1: package-private accessors so tests can assert on persisted events
+    // without needing to reach into persistence storage directly.
+    String getId()         { return id; }
+    String getEventType()  { return eventType; }
+    String getPhn()        { return phn; }
+    String getResourceId() { return resourceId; }
+    String getOutcome()    { return outcome; }
+    Instant getRecordedAt(){ return recordedAt; }
 }

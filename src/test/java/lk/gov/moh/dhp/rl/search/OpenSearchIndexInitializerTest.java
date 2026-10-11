@@ -45,9 +45,15 @@ class OpenSearchIndexInitializerTest {
 
     @Test
     void ensureIndex_indexMissing_createsIndex() throws Exception {
-        // HEAD returns 404 → index absent
+        // HEAD returns 404 → index absent.
+        // Must throw HttpClientErrorException.NotFound (subclass), not the base
+        // HttpClientErrorException, because the production code catches the specific
+        // inner class HttpClientErrorException.NotFound.
         when(restTemplate.exchange(anyString(), eq(HttpMethod.HEAD), any(), eq(Void.class)))
-                .thenThrow(new HttpClientErrorException(HttpStatus.NOT_FOUND));
+                .thenThrow(HttpClientErrorException.NotFound.create(
+                        HttpStatus.NOT_FOUND, "Not Found",
+                        org.springframework.http.HttpHeaders.EMPTY,
+                        new byte[0], null));
         // PUT returns acknowledged=true
         String ackResponse = "{\"acknowledged\":true}";
         when(restTemplate.postForObject(anyString(), any(), eq(String.class)))
@@ -70,7 +76,10 @@ class OpenSearchIndexInitializerTest {
     @Test
     void ensureIndex_createdBody_containsCorrectMappings() throws Exception {
         when(restTemplate.exchange(anyString(), eq(HttpMethod.HEAD), any(), eq(Void.class)))
-                .thenThrow(new HttpClientErrorException(HttpStatus.NOT_FOUND));
+                .thenThrow(HttpClientErrorException.NotFound.create(
+                        HttpStatus.NOT_FOUND, "Not Found",
+                        org.springframework.http.HttpHeaders.EMPTY,
+                        new byte[0], null));
         when(restTemplate.postForObject(anyString(), any(), eq(String.class)))
                 .thenReturn("{\"acknowledged\":true}");
 

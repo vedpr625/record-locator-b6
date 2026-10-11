@@ -1,7 +1,6 @@
 package lk.gov.moh.dhp.rl.ingest;
 
 import jakarta.validation.Valid;
-import lk.gov.moh.dhp.rl.pointer.PointerRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
@@ -47,12 +46,9 @@ public class PointerEventController {
     private static final Logger log = LoggerFactory.getLogger(PointerEventController.class);
 
     private final PointerFactory pointerFactory;
-    private final PointerRepository pointerRepository;
 
-    public PointerEventController(PointerFactory pointerFactory,
-                                   PointerRepository pointerRepository) {
+    public PointerEventController(PointerFactory pointerFactory) {
         this.pointerFactory = pointerFactory;
-        this.pointerRepository = pointerRepository;
     }
 
     @PostMapping
@@ -60,11 +56,12 @@ public class PointerEventController {
         log.info("pointer-event: id={} phn={} facility={}",
                 request.id(), request.phn(), request.facilityHin());
 
-        boolean existed = pointerRepository.existsById(request.id());
+        // H-8: EnsureResult carries the created/updated flag from inside ensure(),
+        // where findById is already in flight. This removes the separate existsById
+        // round-trip, reducing DB calls from 3 to 2 per idempotent upsert.
+        EnsureResult result = pointerFactory.ensure(request.toNewPointerRequest());
 
-        pointerFactory.ensure(request.toNewPointerRequest());
-
-        if (existed) {
+        if (!result.created()) {
             // Idempotent: already known, cursor touched by ensure()
             return ResponseEntity.ok().build();
         }

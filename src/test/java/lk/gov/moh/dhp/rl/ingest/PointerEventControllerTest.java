@@ -1,15 +1,15 @@
 package lk.gov.moh.dhp.rl.ingest;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import lk.gov.moh.dhp.rl.config.TestSecurityConfig;
 import lk.gov.moh.dhp.rl.consent.Consent;
 import lk.gov.moh.dhp.rl.pointer.Pointer;
-import lk.gov.moh.dhp.rl.pointer.PointerRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
-import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -22,8 +22,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /**
  * Slice tests for PointerEventController — uses @WebMvcTest.
+ *
+ * Updated for H-8 fix: PointerFactory.ensure() now returns EnsureResult,
+ * and PointerEventController no longer depends on PointerRepository.
+ *
+ * @Import(TestSecurityConfig.class) supplies a lightweight JwtDecoder so the
+ * Spring Security oauth2ResourceServer config can start without a real JWK
+ * endpoint.  Actual JWT content is provided by MockMvc's .with(jwt()).
  */
 @WebMvcTest(PointerEventController.class)
+@Import(TestSecurityConfig.class)
 @ActiveProfiles("test")
 class PointerEventControllerTest {
 
@@ -31,14 +39,13 @@ class PointerEventControllerTest {
     @Autowired ObjectMapper objectMapper;
 
     @MockBean PointerFactory pointerFactory;
-    @MockBean PointerRepository pointerRepository;
 
     @Test
     void post_validRequest_newPointer_returns201() throws Exception {
         PointerEventRequest req = validRequest();
-        when(pointerRepository.existsById("study-001")).thenReturn(false);
-        Pointer savedPointer = buildPointer("study-001", "PHN001");
-        when(pointerFactory.ensure(any())).thenReturn(savedPointer);
+        // H-8: ensure() returns EnsureResult with created=true for a new pointer
+        when(pointerFactory.ensure(any()))
+                .thenReturn(EnsureResult.created(buildPointer("study-001", "PHN001")));
 
         mockMvc.perform(post("/pointer-events")
                         .with(jwt())
@@ -51,9 +58,9 @@ class PointerEventControllerTest {
     @Test
     void post_validRequest_existingPointer_returns200() throws Exception {
         PointerEventRequest req = validRequest();
-        when(pointerRepository.existsById("study-001")).thenReturn(true);
-        Pointer savedPointer = buildPointer("study-001", "PHN001");
-        when(pointerFactory.ensure(any())).thenReturn(savedPointer);
+        // H-8: ensure() returns EnsureResult with created=false for an existing pointer
+        when(pointerFactory.ensure(any()))
+                .thenReturn(EnsureResult.updated(buildPointer("study-001", "PHN001")));
 
         mockMvc.perform(post("/pointer-events")
                         .with(jwt())
@@ -102,8 +109,8 @@ class PointerEventControllerTest {
     @Test
     void post_convertsToNewPointerRequest_withNationalSyncedFalse() throws Exception {
         PointerEventRequest req = validRequest();
-        when(pointerRepository.existsById(anyString())).thenReturn(false);
-        when(pointerFactory.ensure(any())).thenReturn(buildPointer("study-001", "PHN001"));
+        when(pointerFactory.ensure(any()))
+                .thenReturn(EnsureResult.created(buildPointer("study-001", "PHN001")));
 
         mockMvc.perform(post("/pointer-events")
                 .with(jwt())

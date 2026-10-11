@@ -1,46 +1,62 @@
 package lk.gov.moh.dhp.rl.consent;
 
-import lk.gov.moh.dhp.rl.pointer.PointerRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
+
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
 
 /**
- * Unit tests for ConsentService — thin delegation to PointerRepository.
- * No Spring context; pure mock-based.
+ * Unit tests for ConsentService — delegates to PatientConsentRepository.
+ *
+ * Updated for C-3 fix: ConsentService now uses PatientConsentRepository
+ * (not PointerRepository), the method is isAccessible() (not isOptedOut()),
+ * and the semantics are fail-closed (returns false when no record exists).
  */
 class ConsentServiceTest {
 
-    PointerRepository pointerRepository;
+    PatientConsentRepository patientConsentRepository;
     ConsentService consentService;
 
     @BeforeEach
     void setUp() {
-        pointerRepository = Mockito.mock(PointerRepository.class);
-        consentService = new ConsentService(pointerRepository);
+        patientConsentRepository = Mockito.mock(PatientConsentRepository.class);
+        consentService = new ConsentService(patientConsentRepository);
     }
 
     @Test
-    void isOptedOut_delegatesToRepository_returnsFalse() {
-        when(pointerRepository.existsInaccessibleByPhn("PHN001")).thenReturn(false);
+    void isAccessible_whenConsentRowExistsAndAccessibleTrue_returnsTrue() {
+        PatientConsent pc = PatientConsent.of("PHN001", true, false, null);
+        when(patientConsentRepository.findByPhn("PHN001")).thenReturn(Optional.of(pc));
 
-        assertThat(consentService.isOptedOut("PHN001")).isFalse();
+        assertThat(consentService.isAccessible("PHN001")).isTrue();
     }
 
     @Test
-    void isOptedOut_delegatesToRepository_returnsTrue() {
-        when(pointerRepository.existsInaccessibleByPhn("PHN002")).thenReturn(true);
+    void isAccessible_whenConsentRowExistsAndAccessibleFalse_returnsFalse() {
+        PatientConsent pc = PatientConsent.of("PHN002", false, false, null);
+        when(patientConsentRepository.findByPhn("PHN002")).thenReturn(Optional.of(pc));
 
-        assertThat(consentService.isOptedOut("PHN002")).isTrue();
+        assertThat(consentService.isAccessible("PHN002")).isFalse();
     }
 
     @Test
-    void isOptedOut_nullPhn_delegatesAnyway() {
-        when(pointerRepository.existsInaccessibleByPhn(null)).thenReturn(false);
+    void isAccessible_whenNoConsentRow_returnsFalseFailClosed() {
+        // C-3: fail-closed — unknown consent = inaccessible, not accessible.
+        // This is the critical behaviour: if consent hasn't arrived yet,
+        // we must not expose PHI.
+        when(patientConsentRepository.findByPhn("PHN003")).thenReturn(Optional.empty());
 
-        assertThat(consentService.isOptedOut(null)).isFalse();
+        assertThat(consentService.isAccessible("PHN003")).isFalse();
+    }
+
+    @Test
+    void isAccessible_nullPhn_delegatesAndReturnsFalse() {
+        when(patientConsentRepository.findByPhn(null)).thenReturn(Optional.empty());
+
+        assertThat(consentService.isAccessible(null)).isFalse();
     }
 }

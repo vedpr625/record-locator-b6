@@ -9,6 +9,9 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.oauth2.server.resource.web.BearerTokenAuthenticationEntryPoint;
+import org.springframework.security.oauth2.server.resource.web.access.BearerTokenAccessDeniedHandler;
 import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.web.filter.OncePerRequestFilter;
@@ -42,10 +45,21 @@ public class SecurityConfig {
     public SecurityFilterChain productionFilterChain(HttpSecurity http, MtlsHeaderFilter mtlsHeaderFilter)
             throws Exception {
         http
+                // Stateless JWT API: no session, no CSRF tokens needed.
+                // CSRF protection is meaningful only for browser sessions with cookies;
+                // this API uses Bearer tokens, so CSRF is both unnecessary and incorrect
+                // (it would cause 403 on all POST/PUT/DELETE without CSRF headers).
+                .csrf(csrf -> csrf.disable())
+                .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/actuator/health").permitAll()
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt -> {}))
+                .exceptionHandling(ex -> ex
+                        // Return 401 with WWW-Authenticate: Bearer when no/invalid token
+                        .authenticationEntryPoint(new BearerTokenAuthenticationEntryPoint())
+                        // Return 403 when authenticated but lacking required scope/role
+                        .accessDeniedHandler(new BearerTokenAccessDeniedHandler()))
                 .addFilterBefore(mtlsHeaderFilter, BearerTokenAuthenticationFilter.class);
         return http.build();
     }
@@ -55,10 +69,13 @@ public class SecurityConfig {
     public SecurityFilterChain devFilterChain(HttpSecurity http) throws Exception {
         http
                 .authorizeHttpRequests(auth -> auth.anyRequest().permitAll())
-                // CSRF and sessions are not meaningful for a stateless FHIR API.
-                // Without disabling CSRF, Spring Security 6 rejects every FHIR
-                // POST/PUT with 403 even in dev profile.
-                .csrf(csrf -> csrf.disable())
+                // CSRF is not meaningful for this stateless FHIR API (no cookies,
+                // no browser sessions). Disable only for the H2 console and FHIR/
+                // ingest paths rather than globally, so the dev chain cannot be
+                // accidentally promoted into an environment where CSRF matters.
+                .csrf(csrf -> csrf.ignoringRequestMatchers(
+                        "/h2-console/**", "/fhir/**",
+                        "/pointer-events/**", "/consent-events/**"))
                 .sessionManagement(s -> s.sessionCreationPolicy(
                         org.springframework.security.config.http.SessionCreationPolicy.STATELESS));
         return http.build();
@@ -67,8 +84,9 @@ public class SecurityConfig {
     @Bean
     public MtlsHeaderFilter mtlsHeaderFilter(
             @Value("${rl.security.mtls-header-enabled:false}") boolean enabled,
-            @Value("${rl.security.mtls-header-name:X-Client-Cert-Verified}") String headerName) {
-        return new MtlsHeaderFilter(enabled, headerName);
+            @Value("${rl.security.mtls-header-name:X-Client-Cert-Verified}") String headerName,
+            @Value("${rl.security.mtls-header-success-value:SUCCESS}") String successValue) {
+        return new MtlsHeaderFilter(enabled, headerName, successValue);
     }
 
     /**
@@ -83,10 +101,18 @@ public class SecurityConfig {
 
         private final boolean enabled;
         private final String headerName;
+        /**
+         * The exact value the TLS-terminating reverse proxy sets on successful
+         * client-certificate verification (e.g. "SUCCESS").  Any other value —
+         * including a forged non-null header from a caller — is rejected.
+         * Configurable via {@code rl.security.mtls-header-success-value}.
+         */
+        private final String successValue;
 
-        MtlsHeaderFilter(boolean enabled, String headerName) {
+        MtlsHeaderFilter(boolean enabled, String headerName, String successValue) {
             this.enabled = enabled;
             this.headerName = headerName;
+            this.successValue = successValue;
         }
 
         @Override
@@ -95,7 +121,8 @@ public class SecurityConfig {
             String path = request.getRequestURI();
             boolean isNodeToNodeEndpoint = path.equals("/consent-events") || path.equals("/pointer-events");
 
-            if (enabled && isNodeToNodeEndpoint && request.getHeader(headerName) == null) {
+            if (enabled && isNodeToNodeEndpoint
+                    && !successValue.equals(request.getHeader(headerName))) {
                 response.sendError(HttpServletResponse.SC_FORBIDDEN, "client certificate verification required");
                 return;
             }

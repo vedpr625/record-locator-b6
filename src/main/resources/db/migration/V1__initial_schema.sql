@@ -1,3 +1,6 @@
+-- I-5: V3 renames 'sludi' to 'phn', V4 updates the index names, V6 adds
+-- 'patient_consent'. Read those migrations together with this one to
+-- understand the full current schema.
 CREATE TABLE pointer (
     id                        VARCHAR(200)  NOT NULL,
     entry_uuid                VARCHAR(36)   NOT NULL,
@@ -5,6 +8,7 @@ CREATE TABLE pointer (
     -- identifier, but holds PHN values today - SLUDI has no real
     -- values until the national DPI is production-ready. See
     -- Pointer.java's javadoc on this field for the full explanation.
+    -- Renamed to 'phn' in V4__rename_sludi_to_phn.sql.
     sludi                     VARCHAR(64)   NOT NULL,
     resource_type             VARCHAR(20)   NOT NULL,
     status                    VARCHAR(20)   NOT NULL DEFAULT 'CURRENT',

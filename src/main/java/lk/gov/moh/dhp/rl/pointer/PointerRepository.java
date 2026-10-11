@@ -12,7 +12,8 @@ import java.util.Optional;
 
 public interface PointerRepository extends JpaRepository<Pointer, String> {
 
-    Optional<Pointer> findById(String id);
+    // I-1: findById(String) is already inherited from JpaRepository<Pointer,String>.
+    // Declaring it again is harmless but misleading — removed.
 
     boolean existsByPhn(String phn);
 
@@ -36,7 +37,7 @@ public interface PointerRepository extends JpaRepository<Pointer, String> {
               and p.consent.accessible = true
               and (:status is null or p.status = :status)
               and (:dateFrom is null or p.indexedAt >= :dateFrom)
-              and (:dateTo is null or p.indexedAt <= :dateTo)
+              and (:dateTo is null or p.indexedAt < :dateTo)
               and (:docTypeLoinc is null or p.docTypeLoinc = :docTypeLoinc)
               and (:facilityHin is null or p.facilityHin = :facilityHin)
               and (:identifier is null or p.id = :identifier)
@@ -61,7 +62,7 @@ public interface PointerRepository extends JpaRepository<Pointer, String> {
               and p.consent.accessible = true
               and (:status is null or p.status = :status)
               and (:dateFrom is null or p.indexedAt >= :dateFrom)
-              and (:dateTo is null or p.indexedAt <= :dateTo)
+              and (:dateTo is null or p.indexedAt < :dateTo)
               and (:docTypeLoinc is null or p.docTypeLoinc = :docTypeLoinc)
               and (:identifier is null or p.id = :identifier)
               and p.facilityHin in :facilityHins
@@ -78,20 +79,28 @@ public interface PointerRepository extends JpaRepository<Pointer, String> {
 
     // Used by SearchService for multi-PHN OpenSearch results — fetches
     // all accessible pointers for a set of PHNs in one query.
+    // H-3: now includes docTypeLoinc, facilityHin, identifier so the
+    // name-search path honours all filter parameters, not just date range.
     @Query("""
             select p from Pointer p
             where p.phn in :phns
               and p.consent.accessible = true
               and (:status is null or p.status = :status)
               and (:dateFrom is null or p.indexedAt >= :dateFrom)
-              and (:dateTo is null or p.indexedAt <= :dateTo)
+              and (:dateTo is null or p.indexedAt < :dateTo)
+              and (:docTypeLoinc is null or p.docTypeLoinc = :docTypeLoinc)
+              and (:facilityHin is null or p.facilityHin = :facilityHin)
+              and (:identifier is null or p.id = :identifier)
             order by p.indexedAt desc
             """)
     List<Pointer> searchByPhns(
             @Param("phns") List<String> phns,
             @Param("status") Pointer.Status status,
             @Param("dateFrom") Instant dateFrom,
-            @Param("dateTo") Instant dateTo);
+            @Param("dateTo") Instant dateTo,
+            @Param("docTypeLoinc") String docTypeLoinc,
+            @Param("facilityHin") String facilityHin,
+            @Param("identifier") String identifier);
 
     List<Pointer> findByUpdatedAtAfter(Instant since);
 
@@ -105,7 +114,11 @@ public interface PointerRepository extends JpaRepository<Pointer, String> {
      * local copy correctly but never tells national to re-sync,
      * leaving stale facility data there indefinitely.
      */
-    @Modifying
+    // H-5: clearAutomatically = true evicts stale Pointer entities from the
+    // first-level (L1) cache after the bulk UPDATE so that any subsequent read
+    // in the same transaction sees the freshly updated rows rather than the
+    // pre-update cached state.
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Transactional
     @Query("""
             update Pointer p set

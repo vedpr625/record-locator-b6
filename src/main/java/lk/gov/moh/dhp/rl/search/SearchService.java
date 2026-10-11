@@ -65,6 +65,11 @@ public class SearchService {
      * OpenSearch name lookup → PostgreSQL pointer fetch.
      * Returns all accessible pointers for patients whose name matches the
      * free-text query, filtered by any date/type/facility constraints.
+     *
+     * <p>H-3: all query parameters (docTypeLoinc, facilityHin, identifier)
+     * are now forwarded to the repository query rather than silently dropped.
+     * <p>M-2: dateTo is advanced to exclusive start-of-next-day so that studies
+     * created at any time on the requested date are included.
      */
     private List<Pointer> searchByName(SearchQuery query) {
         List<String> phns = openSearchService.findPhnsByName(query.patientName());
@@ -74,17 +79,22 @@ public class SearchService {
 
         Instant dateFrom = query.dateFrom() == null ? null
                 : query.dateFrom().atStartOfDay(ZoneOffset.UTC).toInstant();
+        // M-2: use exclusive upper bound (start of next day) so all studies on
+        // dateTo are included regardless of what time of day they were indexed.
         Instant dateTo = query.dateTo() == null ? null
-                : query.dateTo().atStartOfDay(ZoneOffset.UTC).toInstant();
+                : query.dateTo().plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant();
 
-        return pointerRepository.searchByPhns(phns, query.status(), dateFrom, dateTo);
+        return pointerRepository.searchByPhns(phns, query.status(), dateFrom, dateTo,
+                query.docTypeLoinc(), query.facilityHin(), query.identifier());
     }
 
     private List<Pointer> searchLocal(SearchQuery query) {
         Instant dateFrom = query.dateFrom() == null ? null
                 : query.dateFrom().atStartOfDay(ZoneOffset.UTC).toInstant();
+        // M-2: exclusive upper bound — start of the day AFTER dateTo so that
+        // studies indexed at any time on the requested date are included.
         Instant dateTo = query.dateTo() == null ? null
-                : query.dateTo().atStartOfDay(ZoneOffset.UTC).toInstant();
+                : query.dateTo().plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant();
 
         if (query.provinceCode() == null) {
             return pointerRepository.search(

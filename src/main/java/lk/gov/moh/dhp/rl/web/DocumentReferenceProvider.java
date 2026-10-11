@@ -81,11 +81,6 @@ public class DocumentReferenceProvider implements IResourceProvider {
             // lookup first, then resolves matching PHNs against PostgreSQL.
             @OptionalParam(name = "_name") StringParam patientName) {
 
-        if (period != null) {
-            throw new ca.uhn.fhir.rest.server.exceptions.InvalidRequestException(
-                    "period search is not yet supported");
-        }
-
         String phn = resolvePhn(patient, patientIdentifier);
 
         if (consentGate.checkSearch(phn, "ITI-67")) {
@@ -95,19 +90,34 @@ public class DocumentReferenceProvider implements IResourceProvider {
         // Extract purpose-of-use from JWT so consent.allows() can filter results.
         String purposeOfUse = extractPurposeOfUse();
 
+        // M-5: the IHE MHD ITI-67 `period` parameter maps to the same date range
+        // as the `date` parameter in this implementation.  Treat it as an alias
+        // rather than rejecting with 400, which would break MHD conformance.
+        DateRangeParam effectiveDate = (date != null) ? date : period;
+
         SearchQuery query = new SearchQuery(
                 phn,
                 patientName == null ? null : patientName.getValue(),
                 parseStatus(status == null ? null : status.getValue()),
-                date == null || date.getLowerBound() == null ? null : toLocalDate(date.getLowerBound().getValue()),
-                date == null || date.getUpperBound() == null ? null : toLocalDate(date.getUpperBound().getValue()),
+                effectiveDate == null || effectiveDate.getLowerBound() == null ? null
+                        : toLocalDate(effectiveDate.getLowerBound().getValue()),
+                effectiveDate == null || effectiveDate.getUpperBound() == null ? null
+                        : toLocalDate(effectiveDate.getUpperBound().getValue()),
                 type == null ? null : type.getValue(),
                 facility == null ? null : facility.getValue(),
                 province == null ? null : province.getValue(),
                 identifier == null ? null : identifier.getValue(),
                 purposeOfUse);
 
-        List<Pointer> pointers = searchService.search(query);
+        // H-4: audit outcome reflects the actual result, not an unconditional
+        // SUCCESS.  A downstream exception after this call records FAILURE.
+        List<Pointer> pointers;
+        try {
+            pointers = searchService.search(query);
+        } catch (Exception ex) {
+            auditService.recordSearch("ITI-67", phn, false);
+            throw ex;
+        }
         auditService.recordSearch("ITI-67", phn, true);
 
         return toBundle(pointers);
@@ -191,12 +201,19 @@ public class DocumentReferenceProvider implements IResourceProvider {
         return bundle;
     }
 
+    /**
+     * L-6: Unknown status values now return 400 as the FHIR spec requires.
+     * Previously they silently fell back to CURRENT, which could mislead callers
+     * into thinking a typo'd status was accepted and returning results.
+     */
     private Pointer.Status parseStatus(String value) {
         if (value == null) return Pointer.Status.CURRENT;
-        return switch (value) {
+        return switch (value.toLowerCase()) {
+            case "current" -> Pointer.Status.CURRENT;
             case "superseded" -> Pointer.Status.SUPERSEDED;
             case "entered-in-error" -> Pointer.Status.ENTERED_IN_ERROR;
-            default -> Pointer.Status.CURRENT;
+            default -> throw new ca.uhn.fhir.rest.server.exceptions.InvalidRequestException(
+                    "Unknown status value '" + value + "'; expected current, superseded, or entered-in-error");
         };
     }
 

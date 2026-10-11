@@ -38,6 +38,13 @@ public record PatientDocument(
         String[] parts = dicomPatientName.split("\\^", -1);
         String familyName = parts.length > 0 ? parts[0].trim() : null;
         String givenName  = parts.length > 1 ? parts[1].trim() : null;
+        // L-5: DICOM PN has 5 components (FamilyName^GivenName^MiddleName^NamePrefix^NameSuffix).
+        // Only the first two are indexed here — middle name, prefix (Dr/Mr) and suffix are
+        // deliberately discarded because they are absent or inconsistent across PACS systems,
+        // and including them in the analyzed full-name field would degrade search recall
+        // (a space-separated "Dr Kasun Perera" would fail to match a query for "Kasun Perera").
+        // If prefix/suffix indexing is needed later, add them as separate keyword fields
+        // rather than mixing them into the analyzed text fields.
         // fullName for single-field searches: "Kasun Perera" and "Perera Kasun" both work
         // because OpenSearch analyzes text fields with a standard analyzer.
         String fullName = String.join(" ",

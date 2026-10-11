@@ -13,6 +13,7 @@ import org.springframework.web.client.RestTemplate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import org.springframework.web.util.UriComponentsBuilder;
 
 /**
  * Wraps the OpenSearch REST API for patient-name lookups and patient
@@ -28,6 +29,15 @@ import java.util.Map;
  * disabled, findPhnsByName() returns an empty list and indexPatient() is a
  * no-op — the app works as a pure PostgreSQL service, which is what
  * Bundle 6 needs in the interim before OpenSearch is deployed.
+ *
+ * <p><b>I-4 – Authentication gap:</b> this client sends no credentials to
+ * OpenSearch. This is intentional for the current deployment topology
+ * (OpenSearch is reachable only from within the cluster, not from the
+ * internet), but must be revisited before any multi-tenant or
+ * internet-reachable deployment. To add authentication, inject an
+ * {@code HttpHeaders}-customizing {@code RestTemplateCustomizer} bean
+ * (Basic auth or a bearer token from AWS Secrets Manager / Vault)
+ * and remove this comment once the gap is closed.
  */
 @Service
 @ConditionalOnProperty(name = "rl.opensearch.enabled", havingValue = "true", matchIfMissing = false)
@@ -111,7 +121,12 @@ public class OpenSearchService extends OpenSearchServicePort {
      */
     public void indexPatient(PatientDocument doc) {
         try {
-            String url = baseUrl + "/" + index + "/_update/" + doc.phn();
+            // H-6: use UriComponentsBuilder so the PHN is percent-encoded and cannot
+            // produce a malformed URL if it contains '/', '?', '#', or '+'.
+            String url = UriComponentsBuilder.fromHttpUrl(baseUrl)
+                    .path("/{index}/_update/{phn}")
+                    .buildAndExpand(index, doc.phn())
+                    .toUriString();
             Map<String, Object> body = Map.of(
                     "doc", Map.of(
                             "phn",        doc.phn(),

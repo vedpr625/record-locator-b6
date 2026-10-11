@@ -25,7 +25,11 @@ public class FhirServerConfig {
         server.setResourceProviders(List.of(documentReferenceProvider, listProvider, binaryProvider));
         server.registerInterceptor(capabilityStatementCustomizer);
 
-        ServletRegistrationBean<Servlet> registration = new ServletRegistrationBean<>(server, "/fhir/r4/*");
+        // Mount at /fhir/* so IHE MHD clients can use /fhir/DocumentReference,
+        // /fhir/List, /fhir/Binary — the standard IHE base path without a
+        // version segment.  (HAPI FHIR inserts the resource-type after the
+        // servlet path automatically.)
+        ServletRegistrationBean<Servlet> registration = new ServletRegistrationBean<>(server, "/fhir/*");
         registration.setLoadOnStartup(1);
         return registration;
     }

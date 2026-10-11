@@ -155,7 +155,14 @@ public class PointerFhirMapper {
         // context.encounter is the native R4 field for linking a
         // document to the NEHR encounter it relates to - agreed
         // earlier as worth adding, never actually built until now.
-        if (pointer.nehrEncounterRef() != null) {
+        //
+        // I-2: guard against nehrBaseUrl being empty (it defaults to "").
+        // An empty base produces "/Encounter/{id}" which is a relative reference —
+        // valid FHIR but not resolvable outside the RL server itself and not what
+        // any consumer expects. Omit the encounter link entirely when the base URL
+        // is not configured rather than silently writing a broken reference.
+        if (pointer.nehrEncounterRef() != null
+                && nehrBaseUrl != null && !nehrBaseUrl.isBlank()) {
             dr.getContext().addEncounter(new Reference(nehrBaseUrl + "/Encounter/" + pointer.nehrEncounterRef()));
         }
 
@@ -217,7 +224,14 @@ public class PointerFhirMapper {
                 .ifPresent(id -> builder.entryUuid(id.getValue().substring("urn:uuid:".length())));
 
         if (dr.hasSubject() && dr.getSubject().hasReference()) {
-            builder.phn(dr.getSubject().getReference().replace("Patient/", ""));
+            // M-7: use lastIndexOf('/') instead of String.replace("Patient/", "")
+            // so a PHN that happens to contain the substring "Patient/" (unlikely
+            // but theoretically possible for numeric PHNs from a different system)
+            // is not silently mangled. lastIndexOf correctly strips only the final
+            // path segment prefix regardless of the reference's shape.
+            String ref = dr.getSubject().getReference();
+            int slash = ref.lastIndexOf('/');
+            builder.phn(slash >= 0 ? ref.substring(slash + 1) : ref);
         }
 
         if (dr.hasType() && !dr.getType().getCoding().isEmpty()) {

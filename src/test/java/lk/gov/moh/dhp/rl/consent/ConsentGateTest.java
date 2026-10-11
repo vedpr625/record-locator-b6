@@ -40,15 +40,25 @@ class ConsentGateTest {
     }
 
     @Test
-    void checkSearch_notOptedOut_returnsFalse() {
-        when(consentService.isOptedOut("PHN123")).thenReturn(false);
+    void checkSearch_accessible_returnsFalse() {
+        // C-3: isAccessible() returns true when patient CAN be accessed → gate does NOT block
+        when(consentService.isAccessible("PHN123")).thenReturn(true);
         assertThat(gate.checkSearch("PHN123", "ITI-67")).isFalse();
         verifyNoInteractions(auditService);
     }
 
     @Test
-    void checkSearch_optedOut_returnsTrueAndAudits() {
-        when(consentService.isOptedOut("PHN123")).thenReturn(true);
+    void checkSearch_inaccessible_returnsTrueAndAudits() {
+        // isAccessible() returns false when patient is opted out or no consent record
+        when(consentService.isAccessible("PHN123")).thenReturn(false);
+        assertThat(gate.checkSearch("PHN123", "ITI-67")).isTrue();
+        verify(auditService).recordConsentBlocked("PHN123", "ITI-67");
+    }
+
+    @Test
+    void checkSearch_failClosed_noConsentRecord_returnsTrueAndAudits() {
+        // Fail-closed: isAccessible() returns false when no consent record → gate blocks
+        when(consentService.isAccessible("PHN123")).thenReturn(false);
         assertThat(gate.checkSearch("PHN123", "ITI-67")).isTrue();
         verify(auditService).recordConsentBlocked("PHN123", "ITI-67");
     }
@@ -63,15 +73,17 @@ class ConsentGateTest {
     }
 
     @Test
-    void checkRetrieve_notOptedOut_doesNotThrow() {
-        when(consentService.isOptedOut("PHN123")).thenReturn(false);
+    void checkRetrieve_accessible_doesNotThrow() {
+        // isAccessible() returns true → patient can be retrieved → no exception
+        when(consentService.isAccessible("PHN123")).thenReturn(true);
         // should complete without throwing
         gate.checkRetrieve("PHN123", "doc1", "DocumentReference", "ITI-67");
     }
 
     @Test
-    void checkRetrieve_optedOut_throws404AndAudits() {
-        when(consentService.isOptedOut("PHN123")).thenReturn(true);
+    void checkRetrieve_inaccessible_throws404AndAudits() {
+        // isAccessible() returns false → patient opted out or no consent record → block
+        when(consentService.isAccessible("PHN123")).thenReturn(false);
         assertThatThrownBy(() ->
             gate.checkRetrieve("PHN123", "doc1", "DocumentReference", "ITI-67"))
             .isInstanceOf(ResourceNotFoundException.class)

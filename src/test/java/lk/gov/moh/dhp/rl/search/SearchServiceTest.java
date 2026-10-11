@@ -66,7 +66,9 @@ class SearchServiceTest {
     void search_byNameOnly_goesViaOpenSearch() {
         when(openSearchService.findPhnsByName("Perera")).thenReturn(List.of("PHN001", "PHN002"));
         Pointer p = mockPointer("PHN001", Consent.defaultAccessible());
-        when(pointerRepository.searchByPhns(anyList(), any(), any(), any())).thenReturn(List.of(p));
+        // H-3: searchByPhns now takes 7 parameters (phns, status, dateFrom, dateTo,
+        // docTypeLoinc, facilityHin, identifier)
+        when(pointerRepository.searchByPhns(anyList(), any(), any(), any(), any(), any(), any())).thenReturn(List.of(p));
 
         SearchQuery q = new SearchQuery(null, "Perera", Pointer.Status.CURRENT,
                 null, null, null, null, null, null, null);

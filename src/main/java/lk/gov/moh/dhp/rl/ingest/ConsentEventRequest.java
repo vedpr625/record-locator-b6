@@ -1,6 +1,8 @@
 package lk.gov.moh.dhp.rl.ingest;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
 
 /**
  * Payload that Bundle 2a POSTs to POST /consent-events to record a patient's
@@ -38,6 +40,13 @@ public record ConsentEventRequest(
         /**
          * Comma-separated list of allowed purpose-of-use codes
          * (e.g. "TREAT,HPAYMT"). Null or empty = unrestricted.
+         *
+         * <p>M-8: constrained to at most 200 characters and to the
+         * pattern {@code [A-Z,]*} (uppercase purpose-of-use codes separated
+         * by commas) so a malformed payload is rejected early at the binding
+         * layer rather than silently stored and later causing a query anomaly.
          */
+        @Size(max = 200)
+        @Pattern(regexp = "[A-Z,]*", message = "purposeOfUse must be comma-separated uppercase codes, e.g. TREAT,HPAYMT")
         String purposeOfUse
 ) {}

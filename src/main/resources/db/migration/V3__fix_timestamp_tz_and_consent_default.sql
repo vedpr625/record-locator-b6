@@ -1,14 +1,25 @@
 -- Fix 1: Use TIMESTAMP WITH TIME ZONE so UTC storage is enforced by the DB
 --         rather than relying on JVM timezone being set correctly.
---         PostgreSQL TIMESTAMP (without tz) stores local time; TIMESTAMPTZ
---         always normalises to UTC regardless of the JVM's default timezone.
+--         PostgreSQL TIMESTAMP (without tz) stores local time; TIMESTAMP WITH
+--         TIME ZONE always normalises to UTC regardless of the JVM's default
+--         timezone.
+--
+--         ALTER COLUMN ... SET DATA TYPE ... is ANSI SQL 2003, supported by
+--         both PostgreSQL (≥ 9.x) and H2 in PostgreSQL compatibility mode.
+--         This avoids the PostgreSQL-specific TIMESTAMPTZ alias and the
+--         USING clause (PostgreSQL accepts the implicit cast; H2 stores
+--         TIMESTAMP as UTC internally and needs no cast).  Each column is
+--         altered in its own statement because H2 does not support altering
+--         multiple columns in one ALTER TABLE.
 ALTER TABLE pointer
-    ALTER COLUMN consent_as_of TYPE TIMESTAMPTZ USING consent_as_of AT TIME ZONE 'UTC',
-    ALTER COLUMN indexed_at    TYPE TIMESTAMPTZ USING indexed_at    AT TIME ZONE 'UTC',
-    ALTER COLUMN updated_at    TYPE TIMESTAMPTZ USING updated_at    AT TIME ZONE 'UTC';
+    ALTER COLUMN consent_as_of SET DATA TYPE TIMESTAMP WITH TIME ZONE;
+ALTER TABLE pointer
+    ALTER COLUMN indexed_at    SET DATA TYPE TIMESTAMP WITH TIME ZONE;
+ALTER TABLE pointer
+    ALTER COLUMN updated_at    SET DATA TYPE TIMESTAMP WITH TIME ZONE;
 
 ALTER TABLE audit_event
-    ALTER COLUMN recorded_at TYPE TIMESTAMPTZ USING recorded_at AT TIME ZONE 'UTC';
+    ALTER COLUMN recorded_at   SET DATA TYPE TIMESTAMP WITH TIME ZONE;
 
 -- Fix 2: Change the default for consent_accessible to TRUE for the edge/Bundle-6
 --         profile (no consent webhook — defaulting to FALSE means every newly-polled

@@ -84,7 +84,7 @@ class OrthancPollerTest {
         when(restTemplate.getForObject(contains("/changes"), eq(String.class))).thenReturn(page);
 
         // processStudy fetches study detail
-        String study = studyJson("1.2.3.4", "PHN001", "Perera", "CT");
+        String study = studyJson("1.2.3.4", "1234567890", "Perera", "CT");
         when(restTemplate.getForEntity(contains("/studies/orthanc-abc"), eq(String.class)))
                 .thenReturn(ResponseEntity.ok(study));
         when(pointerRepository.findById("1.2.3.4")).thenReturn(Optional.empty());
@@ -128,7 +128,7 @@ class OrthancPollerTest {
     @Test
     void processStudy_missingStudyInstanceUID_skips() throws Exception {
         String study = """
-            {"MainDicomTags":{"StudyInstanceUID":""},"PatientMainDicomTags":{"PatientID":"PHN001"}}
+            {"MainDicomTags":{"StudyInstanceUID":""},"PatientMainDicomTags":{"PatientID":"1234567890"}}
             """;
         when(restTemplate.getForEntity(contains("/studies/"), eq(String.class)))
                 .thenReturn(ResponseEntity.ok(study));
@@ -142,7 +142,7 @@ class OrthancPollerTest {
     void processStudy_existingPointer_updatesUrlIfChanged() throws Exception {
         Pointer existing = Pointer.builder()
                 .id("1.2.3.4")
-                .phn("PHN001")
+                .phn("1234567890")
                 .resourceType("ImagingStudy")
                 .contentUrl("http://OLD-url")
                 .facilityHin("HIN001")
@@ -152,7 +152,7 @@ class OrthancPollerTest {
                 .build();
         when(pointerRepository.findById("1.2.3.4")).thenReturn(Optional.of(existing));
         when(restTemplate.getForEntity(contains("/studies/orthanc-abc"), eq(String.class)))
-                .thenReturn(ResponseEntity.ok(studyJson("1.2.3.4", "PHN001", "Perera", "CT")));
+                .thenReturn(ResponseEntity.ok(studyJson("1.2.3.4", "1234567890", "Perera", "CT")));
 
         poller.processStudy("orthanc-abc");
 
@@ -166,7 +166,7 @@ class OrthancPollerTest {
         String wadoUrl = "http://orthanc:8042/dicom-web/studies/1.2.3.4";
         Pointer existing = Pointer.builder()
                 .id("1.2.3.4")
-                .phn("PHN001")
+                .phn("1234567890")
                 .resourceType("ImagingStudy")
                 .contentUrl(wadoUrl) // already up-to-date
                 .facilityHin("HIN001")
@@ -176,7 +176,7 @@ class OrthancPollerTest {
                 .build();
         when(pointerRepository.findById("1.2.3.4")).thenReturn(Optional.of(existing));
         when(restTemplate.getForEntity(contains("/studies/orthanc-abc"), eq(String.class)))
-                .thenReturn(ResponseEntity.ok(studyJson("1.2.3.4", "PHN001", "Perera", "CT")));
+                .thenReturn(ResponseEntity.ok(studyJson("1.2.3.4", "1234567890", "Perera", "CT")));
 
         poller.processStudy("orthanc-abc");
 

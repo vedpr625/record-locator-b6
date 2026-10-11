@@ -4,7 +4,7 @@ spring:
   datasource:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/record_locator}
     username: ${DB_USER:record_locator}
-    password: ${DB_PASSWORD:}
+    password: ${DB_PASSWORD}
   jpa:
     hibernate:
       ddl-auto: validate

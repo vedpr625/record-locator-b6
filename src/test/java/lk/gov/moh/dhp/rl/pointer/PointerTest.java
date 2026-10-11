@@ -111,7 +111,7 @@ class PointerTest {
 
     @Test
     void builder_locationExcluded_nullsFacilityFields() {
-        Consent excluded = Consent.from(false, true, null); // inaccessible+locationExcluded
+        Consent excluded = Consent.from(false, true, (String) null); // inaccessible+locationExcluded
         Pointer p = Pointer.builder()
                 .id("doc-001").phn("PHN001")
                 .resourceType("DocumentReference")
@@ -155,7 +155,7 @@ class PointerTest {
         Pointer p = minimalPointerWithFacility("doc-001");
         assertThat(p.facilityHin()).isEqualTo("HIN001");
 
-        Consent excluded = Consent.from(false, true, null);
+        Consent excluded = Consent.from(false, true, (String) null);
         p.applyConsent(excluded);
 
         assertThat(p.facilityHin()).isNull();

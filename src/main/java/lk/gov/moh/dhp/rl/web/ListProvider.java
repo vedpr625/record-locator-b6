@@ -130,7 +130,13 @@ public class ListProvider implements IResourceProvider {
 
     private ListResource toListResource(String submissionSetId, String phn, List<Pointer> members) {
         ListResource list = new ListResource();
-        String entryUuid = UUID.nameUUIDFromBytes(submissionSetId.getBytes()).toString();
+        String entryUuid = UUID.nameUUIDFromBytes(
+                submissionSetId.getBytes(java.nio.charset.StandardCharsets.UTF_8)).toString();
+        // L-2: use UTF-8 explicitly so deterministic UUID generation is stable
+        // regardless of the JVM's default charset (which varies by OS/container).
+        // The previous getBytes() call used the platform default, meaning the same
+        // submissionSetId could produce a different UUID on a system with a
+        // non-UTF-8 default charset, breaking idempotency.
         list.setId(entryUuid);
 
         // The uniqueId slice (SubmissionSet.uniqueId per the real

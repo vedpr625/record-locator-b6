@@ -166,6 +166,15 @@ public class Pointer {
      * forward so "most recently updated" stays meaningful, without
      * churning nationalSynced/contentUrl the way a real content
      * change would.
+     *
+     * <p>L-4: {@code nationalSynced} is intentionally NOT reset here.
+     * {@code touch()} represents "we already have this pointer; the national
+     * hub has already been told about it". Resetting {@code nationalSynced}
+     * would trigger a redundant re-sync to the hub for every idempotent
+     * replay, which is both wasteful and a potential source of spurious
+     * "updated" events on the national feed. Only methods that change
+     * substantive content ({@link #applyConsent}, {@link #updateContentUrl})
+     * should clear {@code nationalSynced}.
      */
     public void touch() {
         this.updatedAt = Instant.now();

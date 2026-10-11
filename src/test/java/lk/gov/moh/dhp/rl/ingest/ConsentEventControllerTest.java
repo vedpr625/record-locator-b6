@@ -1,11 +1,14 @@
 package lk.gov.moh.dhp.rl.ingest;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import lk.gov.moh.dhp.rl.config.TestSecurityConfig;
+import lk.gov.moh.dhp.rl.consent.PatientConsentRepository;
 import lk.gov.moh.dhp.rl.pointer.PointerRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
@@ -18,14 +21,24 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /**
  * Slice tests for ConsentEventController — uses @WebMvcTest.
+ *
+ * Updated for C-4: ConsentEventController now requires PatientConsentRepository
+ * (to persist the consent decision before propagating to pointers), so it must
+ * be mocked alongside PointerRepository.
+ *
+ * @Import(TestSecurityConfig.class) supplies a lightweight JwtDecoder so the
+ * Spring Security oauth2ResourceServer config can start without a real JWK
+ * endpoint.
  */
 @WebMvcTest(ConsentEventController.class)
+@Import(TestSecurityConfig.class)
 @ActiveProfiles("test")
 class ConsentEventControllerTest {
 
     @Autowired MockMvc mockMvc;
     @Autowired ObjectMapper objectMapper;
 
+    @MockBean PatientConsentRepository patientConsentRepository;
     @MockBean PointerRepository pointerRepository;
 
     @Test

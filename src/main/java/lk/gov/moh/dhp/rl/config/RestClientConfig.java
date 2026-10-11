@@ -13,8 +13,12 @@ public class RestClientConfig {
     @Bean
     public RestTemplate restTemplate(RestTemplateBuilder builder) {
         return builder
-                .setConnectTimeout(Duration.ofSeconds(2))
-                .setReadTimeout(Duration.ofSeconds(3))
+                // H-1: explicit timeouts prevent a hung Orthanc from stalling
+                // the scheduled poller thread indefinitely.
+                // connect: fail fast if the host is unreachable.
+                // read: Orthanc WADO-RS study metadata can be slow on large studies.
+                .setConnectTimeout(Duration.ofSeconds(5))
+                .setReadTimeout(Duration.ofSeconds(30))
                 .build();
     }
 }

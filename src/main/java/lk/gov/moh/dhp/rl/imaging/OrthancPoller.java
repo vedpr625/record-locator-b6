@@ -19,6 +19,7 @@ import org.springframework.web.client.RestTemplate;
 
 import jakarta.annotation.PostConstruct;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.regex.Pattern;
 
 /**
  * Uses Orthanc's Changes API (GET /changes?since=X) rather than
@@ -36,13 +37,19 @@ import java.util.concurrent.atomic.AtomicLong;
  * (retrieved from ApplicationContext) so the @Transactional annotation is
  * actually applied. Calling this.processStudy() would bypass the proxy.
  */
+// H-2: matchIfMissing = false — the poller is DISABLED unless explicitly enabled.
+// The previous matchIfMissing = true caused startup failures when rl.orthanc.base-url
+// was not configured, because the bean would activate by default and then fail to
+// resolve @Value("${rl.orthanc.base-url}") at first poll time.
 @Component
-@ConditionalOnProperty(name = "rl.orthanc.enabled", havingValue = "true", matchIfMissing = true)
+@ConditionalOnProperty(name = "rl.orthanc.enabled", havingValue = "true", matchIfMissing = false)
 public class OrthancPoller {
 
     private static final Logger log = LoggerFactory.getLogger(OrthancPoller.class);
     private static final int CHANGES_PAGE_SIZE = 100;
     private static final String STABLE_STUDY = "StableStudy";
+    /** C-5: PHN must be exactly 10 digits — same constraint as ConsentEventRequest/PointerEventRequest. */
+    private static final Pattern PHN_PATTERN = Pattern.compile("[0-9]{10}");
 
     @Value("${rl.orthanc.base-url}")
     private String orthancBaseUrl;
@@ -148,6 +155,15 @@ public class OrthancPoller {
             return;
         }
 
+        // C-5: validate the PHN extracted from DICOM PatientID before storing.
+        // A crafted PatientID with SQL metacharacters, FHIR path separators, or
+        // another patient's PHN must be rejected rather than silently ingested.
+        if (!PHN_PATTERN.matcher(phn).matches()) {
+            log.warn("study {} has invalid PatientID '{}' (expected 10-digit PHN), skipping",
+                    orthancStudyId, phn);
+            return;
+        }
+
         String wadoRsUrl = orthancBaseUrl + "/dicom-web/studies/" + studyInstanceUid;
 
         pointerRepository.findById(studyInstanceUid).ifPresentOrElse(
@@ -174,11 +190,19 @@ public class OrthancPoller {
         }
     }
 
+    /**
+     * Maps Orthanc modality codes to LOINC document type codes.
+     *
+     * <p>M-3 fix: split on the Orthanc separator and use set membership so that
+     * "OCT", "CBCT" and "SCT" are not incorrectly matched by {@code contains("CT")}.
+     * Orthanc returns ModalitiesInStudy as a comma- or space-separated list.
+     */
     private String modalityToLoinc(String modalities) {
-        if (modalities.contains("CT")) return "18747-6";
-        if (modalities.contains("MR")) return "18755-9";
-        if (modalities.contains("US")) return "18760-9";
-        if (modalities.contains("MG")) return "26347-5";
+        java.util.Set<String> codes = java.util.Set.of(modalities.split("[\\s,]+"));
+        if (codes.contains("CT")) return "18747-6";
+        if (codes.contains("MR")) return "18755-9";
+        if (codes.contains("US")) return "18760-9";
+        if (codes.contains("MG")) return "26347-5";
         return "18748-4";
     }
 }

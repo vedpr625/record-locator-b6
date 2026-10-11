@@ -56,6 +56,19 @@ public class Consent {
     }
 
     /**
+     * Convenience overload accepting the pre-joined comma-separated purpose-of-use
+     * string as stored in {@link lk.gov.moh.dhp.rl.consent.PatientConsent} and
+     * in the {@code consent_purpose_of_use} column.
+     *
+     * @param accessible      true = patient opted in (data accessible)
+     * @param locationExcluded true = facility details must be withheld
+     * @param purposeOfUse    comma-separated purpose codes, or null for unrestricted
+     */
+    public static Consent from(boolean accessible, boolean locationExcluded, String purposeOfUse) {
+        return new Consent(accessible, locationExcluded, purposeOfUse, Source.BUNDLE_2A, Instant.now());
+    }
+
+    /**
      * Used only when we genuinely have no consent information yet -
      * e.g. a brand new patient before their first Bundle 2a lookup.
      * Fails closed on purpose.
