@@ -129,15 +129,12 @@ public class DocumentReferenceProvider implements IResourceProvider {
      * resolved a PIXm/PDQm identifier but doesn't have our internal
      * reference). When _name is supplied without either, phn is null
      * and the OpenSearch path in SearchService drives the query.
+     *
+     * <p>M-12: delegates to shared utility — was duplicated verbatim in ListProvider.
+     * Uses the null-returning variant because ITI-67 supports _name-only queries.
      */
     private String resolvePhn(ReferenceParam patient, TokenParam patientIdentifier) {
-        if (patient != null) {
-            return patient.getIdPart();
-        }
-        if (patientIdentifier != null) {
-            return patientIdentifier.getValue();
-        }
-        return null; // _name-only query — SearchService will use OpenSearch
+        return FhirParamUtil.resolvePhn(patient, patientIdentifier);
     }
 
     /**

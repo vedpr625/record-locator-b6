@@ -85,6 +85,13 @@ public class OrthancPoller {
     /** Load the persisted cursor on startup so we resume rather than replay. */
     @PostConstruct
     void loadCursor() {
+        // S-7: warn at startup when orthancBaseUrl is not HTTPS.
+        // A plain HTTP URL exposes DICOM study metadata in transit; operators should
+        // configure a HTTPS endpoint in any non-local environment.
+        if (orthancBaseUrl != null && !orthancBaseUrl.startsWith("https://")) {
+            log.warn("rl.orthanc.base-url '{}' is not HTTPS — patient data may be transmitted in plain text",
+                    orthancBaseUrl);
+        }
         long persisted = cursorRepository.load();
         since.set(persisted);
         log.info("orthanc poller starting at cursor {}", persisted);
@@ -101,6 +108,10 @@ public class OrthancPoller {
             try {
                 String url = orthancBaseUrl + "/changes?since=" + since.get() + "&limit=" + CHANGES_PAGE_SIZE;
                 String body = restTemplate.getForObject(url, String.class);
+                if (body == null) {
+                    log.debug("orthanc returned empty response body, skipping");
+                    return;
+                }
                 page = objectMapper.readTree(body);
             } catch (Exception e) {
                 log.debug("orthanc unreachable: {}", e.getMessage());

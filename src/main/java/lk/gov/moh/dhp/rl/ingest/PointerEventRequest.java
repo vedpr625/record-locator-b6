@@ -1,6 +1,7 @@
 package lk.gov.moh.dhp.rl.ingest;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
 
 /**
  * Payload that a hospital node POSTs to POST /pointer-events to register
@@ -15,7 +16,8 @@ import jakarta.validation.constraints.NotBlank;
  * Auth: JWT OAuth2 resource server (always active) + mTLS header filter
  * (enabled via rl.mtls.enabled=true in production).
  *
- * TODO: route to domain node when domain affinity federation is implemented.
+ * When domain affinity federation is implemented, routing to the appropriate
+ * domain node will be added here.
  */
 public record PointerEventRequest(
 
@@ -23,7 +25,7 @@ public record PointerEventRequest(
         @NotBlank String id,
 
         /** Patient Health Number — national patient identifier from the Client Registry. */
-        @NotBlank String phn,
+        @NotBlank @Pattern(regexp = "[0-9]{10}", message = "phn must be exactly 10 digits") String phn,
 
         /** Display name (optional). Used only for OpenSearch patient-name indexing. */
         String patientName,

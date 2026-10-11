@@ -18,12 +18,13 @@ import jakarta.validation.constraints.Size;
  * Auth: JWT OAuth2 resource server (always active) + mTLS header filter
  * (enabled via rl.mtls.enabled=true in production).
  *
- * TODO: route to domain node when domain affinity federation is implemented.
+ * When domain affinity federation is implemented, routing to the appropriate
+ * domain node will be added here.
  */
 public record ConsentEventRequest(
 
         /** Patient Health Number whose consent changed. */
-        @NotBlank String phn,
+        @NotBlank @Pattern(regexp = "[0-9]{10}", message = "phn must be exactly 10 digits") String phn,
 
         /**
          * True = patient has opted in (data accessible).

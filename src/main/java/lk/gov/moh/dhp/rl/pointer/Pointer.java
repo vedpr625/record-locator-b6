@@ -253,6 +253,21 @@ public class Pointer {
         return nationalSynced;
     }
 
+    // R-4: JPA entities that end up in collections or are compared with == must
+    // override equals/hashCode. Keyed on the @Id field (id) — two Pointer
+    // instances representing the same database row are equal if their ids match.
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof Pointer other)) return false;
+        return Objects.equals(id, other.id);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hashCode(id);
+    }
+
     public enum Status {
         CURRENT,
         SUPERSEDED,

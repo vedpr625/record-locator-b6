@@ -6,6 +6,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
 import java.time.Instant;
+import java.util.Objects;
 
 /**
  * Persistent record of the latest consent decision for a patient (PHN).
@@ -71,6 +72,21 @@ public class PatientConsent {
     public String purposeOfUse() { return purposeOfUse; }
     public Instant recordedAt() { return recordedAt; }
     public Instant updatedAt() { return updatedAt; }
+
+    // R-5: JPA entities must override equals/hashCode when used in collections.
+    // Keyed on phn (the @Id column) — two PatientConsent instances are equal
+    // iff they represent the same patient's consent record.
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof PatientConsent other)) return false;
+        return Objects.equals(phn, other.phn);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hashCode(phn);
+    }
 
     /**
      * Convert to a {@link Consent} value for use in pointer creation / consent gate.

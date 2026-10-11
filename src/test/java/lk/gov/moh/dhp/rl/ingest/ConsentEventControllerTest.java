@@ -50,10 +50,10 @@ class ConsentEventControllerTest {
                         .with(jwt())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
-                                new ConsentEventRequest("PHN001", false, false, null))))
+                                new ConsentEventRequest("1234567890", false, false, null))))
                 .andExpect(status().isNoContent());
 
-        verify(pointerRepository).applyConsentByPhn(eq("PHN001"), eq(false), eq(false), isNull(), any());
+        verify(pointerRepository).applyConsentByPhn(eq("1234567890"), eq(false), eq(false), isNull(), any());
     }
 
     @Test
@@ -65,10 +65,10 @@ class ConsentEventControllerTest {
                         .with(jwt())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
-                                new ConsentEventRequest("PHN001", true, false, "TREAT"))))
+                                new ConsentEventRequest("1234567890", true, false, "TREAT"))))
                 .andExpect(status().isNoContent());
 
-        verify(pointerRepository).applyConsentByPhn(eq("PHN001"), eq(true), eq(false), eq("TREAT"), any());
+        verify(pointerRepository).applyConsentByPhn(eq("1234567890"), eq(true), eq(false), eq("TREAT"), any());
     }
 
     @Test
@@ -80,10 +80,10 @@ class ConsentEventControllerTest {
                         .with(jwt())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
-                                new ConsentEventRequest("PHN001", true, true, null))))
+                                new ConsentEventRequest("1234567890", true, true, null))))
                 .andExpect(status().isNoContent());
 
-        verify(pointerRepository).applyConsentByPhn(eq("PHN001"), eq(true), eq(true), isNull(), any());
+        verify(pointerRepository).applyConsentByPhn(eq("1234567890"), eq(true), eq(true), isNull(), any());
     }
 
     @Test
@@ -101,7 +101,7 @@ class ConsentEventControllerTest {
         mockMvc.perform(post("/consent-events")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
-                                new ConsentEventRequest("PHN001", true, false, null))))
+                                new ConsentEventRequest("1234567890", true, false, null))))
                 .andExpect(status().isUnauthorized());
     }
 
@@ -115,7 +115,7 @@ class ConsentEventControllerTest {
                         .with(jwt())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
-                                new ConsentEventRequest("NEWPHN", false, false, null))))
+                                new ConsentEventRequest("9999999999", false, false, null))))
                 .andExpect(status().isNoContent());
     }
 }

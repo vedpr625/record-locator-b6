@@ -5,6 +5,7 @@ import ca.uhn.fhir.rest.annotation.Read;
 import ca.uhn.fhir.rest.server.IResourceProvider;
 import ca.uhn.fhir.rest.server.exceptions.ResourceGoneException;
 import ca.uhn.fhir.rest.server.exceptions.ResourceNotFoundException;
+import jakarta.annotation.PostConstruct;
 import jakarta.servlet.http.HttpServletResponse;
 import lk.gov.moh.dhp.rl.audit.AuditService;
 import lk.gov.moh.dhp.rl.consent.ConsentGate;
@@ -12,6 +13,8 @@ import lk.gov.moh.dhp.rl.pointer.Pointer;
 import lk.gov.moh.dhp.rl.search.SearchService;
 import org.hl7.fhir.r4.model.Binary;
 import org.hl7.fhir.r4.model.IdType;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -29,6 +32,8 @@ import java.util.Set;
  */
 @Component
 public class BinaryProvider implements IResourceProvider {
+
+    private static final Logger log = LoggerFactory.getLogger(BinaryProvider.class);
 
     /**
      * H-7: allowed hostnames for the content URL redirect.
@@ -50,6 +55,22 @@ public class BinaryProvider implements IResourceProvider {
         this.allowedHosts = allowedHostsCsv == null || allowedHostsCsv.isBlank()
                 ? Set.of()
                 : Set.of(allowedHostsCsv.split("\\s*,\\s*"));
+    }
+
+    /**
+     * R-3: Warn at startup when no allowed hosts are configured.
+     * An empty allowedHosts set blocks all ITI-68 redirects, so deployments
+     * that forget to configure this property will get ResourceNotFound on every
+     * retrieve instead of a useful redirect. Warn loudly so operators notice.
+     */
+    @PostConstruct
+    void checkAllowedHosts() {
+        if (allowedHosts.isEmpty()) {
+            log.warn("rl.content-url.allowed-hosts is not configured — " +
+                     "all ITI-68 content URL redirects will be blocked. " +
+                     "Set this property to the comma-separated list of allowed hostnames " +
+                     "for your WADO-RS / document store endpoint.");
+        }
     }
 
     @Override

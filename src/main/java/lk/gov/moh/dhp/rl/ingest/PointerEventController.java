@@ -34,9 +34,8 @@ import java.net.URI;
  * pointer with the same id already exists, updatedAt is refreshed and 200
  * is returned instead of 201.
  *
- * TODO: when domain-affinity federation is implemented, route the pointer to
- *       the appropriate domain node in addition to local storage.
- *       // TODO: route to domain node based on facilityHin → domain mapping
+ * When domain-affinity federation is implemented, route the pointer to
+ * the appropriate domain node in addition to local storage.
  */
 @RestController
 @RequestMapping("/pointer-events")
@@ -53,8 +52,8 @@ public class PointerEventController {
 
     @PostMapping
     public ResponseEntity<Void> handle(@Valid @RequestBody PointerEventRequest request) {
-        log.info("pointer-event: id={} phn={} facility={}",
-                request.id(), request.phn(), request.facilityHin());
+        log.info("pointer-event: id={} phn=*** facility={}",
+                request.id(), request.facilityHin());
 
         // H-8: EnsureResult carries the created/updated flag from inside ensure(),
         // where findById is already in flight. This removes the separate existsById

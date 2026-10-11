@@ -1,13 +1,17 @@
 package lk.gov.moh.dhp.rl.config;
 
+import jakarta.annotation.PostConstruct;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
+import org.springframework.core.env.Environment;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.oauth2.server.resource.web.BearerTokenAuthenticationEntryPoint;
@@ -17,9 +21,46 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.util.Arrays;
 
 @Configuration
 public class SecurityConfig {
+
+    private static final Logger log = LoggerFactory.getLogger(SecurityConfig.class);
+
+    private final Environment environment;
+
+    @Value("${rl.security.mtls-header-enabled:false}")
+    private boolean mtlsEnabled;
+
+    public SecurityConfig(Environment environment) {
+        this.environment = environment;
+    }
+
+    /**
+     * S-1: Warn loudly at startup if the "dev" Spring profile is active.
+     * The dev filter chain permits all requests without authentication, so
+     * accidentally deploying with "dev" active exposes every endpoint.
+     *
+     * S-2: Warn at startup when mTLS header enforcement is disabled.
+     * The node-to-node endpoints (/consent-events, /pointer-events) rely on
+     * the reverse proxy setting a client-cert verification header; without
+     * mTLS, any caller on the network can POST to these endpoints.
+     */
+    @PostConstruct
+    void warnInsecureConfig() {
+        // S-1: dev profile guard
+        if (Arrays.asList(environment.getActiveProfiles()).contains("dev")) {
+            log.warn("*** SECURITY WARNING: Spring profile 'dev' is active — " +
+                     "all endpoints are unauthenticated. DO NOT run this profile in production. ***");
+        }
+        // S-2: mTLS disabled warning
+        if (!mtlsEnabled) {
+            log.warn("rl.security.mtls-header-enabled=false — mTLS header enforcement is OFF. " +
+                     "Node-to-node endpoints (/consent-events, /pointer-events) are not protected " +
+                     "by client-certificate verification. Enable once your reverse proxy is deployed.");
+        }
+    }
 
     /**
      * /consent-events and /pointer-events are node-to-node (Bundle 2a

@@ -54,127 +54,102 @@ public class PointerFhirMapper {
     @Value("${rl.nehr-base-url:}")
     private String nehrBaseUrl;
 
+    // M-1: toFhir() was ~120 lines; extracted helpers to bring each logical section
+    // under the SonarQube S138 method-length limit.
     public DocumentReference toFhir(Pointer pointer) {
         DocumentReference dr = new DocumentReference();
         dr.setId(pointer.id());
+        addIheIdentifiers(dr, pointer);
+        dr.setStatus(toFhirStatus(pointer.status()));
+        dr.setSubject(new Reference("Patient/" + pointer.phn()));
+        dr.setType(buildDocType(pointer));
+        addResourceTypeMarker(dr, pointer);
+        addAttachment(dr, pointer);
+        addContextBlock(dr, pointer);
+        dr.setDate(Date.from(pointer.indexedAt()));
+        addConsentExtensions(dr, pointer.consent());
+        if (pointer.submissionSetId() != null) {
+            dr.addExtension(new Extension(EXT_SUBMISSION_SET, new StringType(pointer.submissionSetId())));
+        }
+        return dr;
+    }
 
-        // masterIdentifier.type is mandatory under IHE.MHD.UniqueIdIdentifier
-        // - a fixed coding identifying this AS the uniqueId slice.
-        // Confirmed against the real profile page; the previous
-        // version set system/value but never type, which is a real
-        // conformance gap against the named profile, not base R4.
+    /**
+     * Writes the three IHE-required identifier slices and the homeCommunityId extension.
+     * masterIdentifier (uniqueId), identifier[uniqueId slice], identifier[entryUUID slice],
+     * and the IHE ihe-HomeCommunityId extension.
+     */
+    private void addIheIdentifiers(DocumentReference dr, Pointer pointer) {
+        // masterIdentifier.type is mandatory under IHE.MHD.UniqueIdIdentifier.
         Identifier masterIdentifier = dr.getMasterIdentifier();
         masterIdentifier.setSystem(homeCommunityId).setValue(pointer.id());
         masterIdentifier.setType(new CodeableConcept()
                 .addCoding(new Coding(IHE_IDENTIFIER_TYPE_SYSTEM, "uniqueId", null)));
 
-        // The uniqueId slice on identifier[] - confirmed the profile
-        // requires this to exactly match masterIdentifier when
-        // present. Same value, same type marker, separate list entry
-        // per the slicing rule (identifier is sliced by value+type).
+        // The uniqueId slice on identifier[]: must exactly match masterIdentifier.
         dr.addIdentifier(new Identifier()
                 .setSystem(homeCommunityId)
                 .setValue(pointer.id())
                 .setType(new CodeableConcept()
                         .addCoding(new Coding(IHE_IDENTIFIER_TYPE_SYSTEM, "uniqueId", null))));
 
-        // The entryUUID slice - identifies the DocumentReference
-        // RESOURCE itself, a genuinely different thing from the
-        // document it points at (masterIdentifier/uniqueId above).
-        // Confirmed against IHE.MHD.EntryUUID.Identifier: use=official,
-        // system fixed to urn:ietf:rfc:3986, value must start with
-        // urn:uuid: - satisfied by Pointer.entryUuid(), a separate
-        // UUID generated once at creation specifically for this.
+        // The entryUUID slice: use=official, system=urn:ietf:rfc:3986, value=urn:uuid:{uuid}.
         dr.addIdentifier(new Identifier()
                 .setUse(Identifier.IdentifierUse.OFFICIAL)
                 .setSystem(URN_OID_SYSTEM)
                 .setValue("urn:uuid:" + pointer.entryUuid()));
 
-        // The real, named IHE extension for the affinity domain OID -
-        // previously this app repurposed masterIdentifier.system for
-        // this instead of using the actual extension IHE defines.
-        // homeCommunityId is configured as urn:oid:2.16... but
-        // OidType's constructor documentation says it "prepends
-        // urn:oid: to the OID string" - unclear whether it detects an
-        // already-present prefix, so stripping it explicitly first
-        // rather than risk a doubled urn:oid:urn:oid:... value.
+        // IHE ihe-HomeCommunityId extension (strip urn:oid: prefix before wrapping).
         String bareOid = homeCommunityId.startsWith("urn:oid:")
                 ? homeCommunityId.substring("urn:oid:".length())
                 : homeCommunityId;
         dr.addExtension(new Extension(IHE_HOME_COMMUNITY_ID_EXT, new org.hl7.fhir.r4.model.OidType(bareOid)));
+    }
 
-        dr.setStatus(toFhirStatus(pointer.status()));
-        // Builds a plain local reference (Patient/{phn}). By FHIR convention
-        // this means "the Patient resource with this logical id on this server",
-        // but this RL doesn't host a Patient resource. A logical reference using
-        // identifier.system+value would be more correct for a business identifier
-        // on a server that doesn't own the Patient resource — flagging, not fixing,
-        // as this is a separate conformance concern.
-        dr.setSubject(new Reference("Patient/" + pointer.phn()));
-
-        // type is 1..1 MANDATORY under IHE MHD (base R4 makes it
-        // optional, but the actual profile does not) - confirmed
-        // against the real MHD Minimal DocumentReference structure.
-        // A pointer with no LOINC code still needs SOME type; falling
-        // back to the generic "unspecified document type" code rather
-        // than silently omitting a mandatory field.
-        dr.setType(new CodeableConcept().addCoding(pointer.docTypeLoinc() != null
+    /**
+     * Builds the mandatory DocumentReference.type CodeableConcept.
+     * Falls back to LOINC 34133-9 (summary of episode note) when no LOINC code is set
+     * to satisfy the IHE MHD 1..1 cardinality constraint.
+     */
+    private CodeableConcept buildDocType(Pointer pointer) {
+        return new CodeableConcept().addCoding(pointer.docTypeLoinc() != null
                 ? new Coding(LOINC, pointer.docTypeLoinc(), null)
-                : new Coding(LOINC, "34133-9", "Summary of episode note")));
+                : new Coding(LOINC, "34133-9", "Summary of episode note"));
+    }
 
+    /**
+     * Adds a DICOM UID identifier for imaging studies, or a source-resource-type
+     * extension for NEHR-originated non-DocumentReference pointers.
+     */
+    private void addResourceTypeMarker(DocumentReference dr, Pointer pointer) {
         if ("ImagingStudy".equals(pointer.resourceType())) {
             dr.addIdentifier(new Identifier().setSystem(DICOM_UID_SYSTEM).setValue(pointer.id()));
         } else if (!"DocumentReference".equals(pointer.resourceType())) {
-            // A NEHR-originated pointer (DiagnosticReport, Encounter,
-            // etc.) wrapped as a DocumentReference - previously
-            // indistinguishable from an actual document once rendered,
-            // which silently defeated the whole point of ingesting
-            // these separately. Flagging the real underlying resource
-            // type so a consumer can tell "this points at a NEHR
-            // structured resource, not a document" before following
-            // the content.attachment.url.
             dr.addExtension(new Extension(EXT_SOURCE_RESOURCE_TYPE, new StringType(pointer.resourceType())));
         }
+    }
 
+    /** Adds the content attachment (contentType + contentUrl). */
+    private void addAttachment(DocumentReference dr, Pointer pointer) {
         Attachment attachment = new Attachment();
         attachment.setContentType(pointer.contentType());
         attachment.setUrl(pointer.contentUrl());
         dr.addContent().setAttachment(attachment);
+    }
 
-        // context.facilityType is the native R4 field for this - no
-        // separate extension needed. facilityHin was previously
-        // ALSO written as a custom extension here, duplicating what
-        // context.facilityType.coding[0].code already carries -
-        // found by checking every extension against the real R4
-        // structure rather than assuming each one earned its place.
+    /**
+     * Populates context.facilityType and context.encounter when the pointer has the
+     * relevant data. I-2: omits context.encounter when nehrBaseUrl is blank to avoid
+     * writing an unresolvable relative reference.
+     */
+    private void addContextBlock(DocumentReference dr, Pointer pointer) {
         if (pointer.facilityHin() != null) {
             dr.getContext().setFacilityType(new CodeableConcept()
                     .addCoding(new Coding(homeCommunityId, pointer.facilityHin(), pointer.facilityName())));
         }
-
-        // context.encounter is the native R4 field for linking a
-        // document to the NEHR encounter it relates to - agreed
-        // earlier as worth adding, never actually built until now.
-        //
-        // I-2: guard against nehrBaseUrl being empty (it defaults to "").
-        // An empty base produces "/Encounter/{id}" which is a relative reference —
-        // valid FHIR but not resolvable outside the RL server itself and not what
-        // any consumer expects. Omit the encounter link entirely when the base URL
-        // is not configured rather than silently writing a broken reference.
-        if (pointer.nehrEncounterRef() != null
-                && nehrBaseUrl != null && !nehrBaseUrl.isBlank()) {
+        if (pointer.nehrEncounterRef() != null && nehrBaseUrl != null && !nehrBaseUrl.isBlank()) {
             dr.getContext().addEncounter(new Reference(nehrBaseUrl + "/Encounter/" + pointer.nehrEncounterRef()));
         }
-
-        dr.setDate(Date.from(pointer.indexedAt()));
-
-        addConsentExtensions(dr, pointer.consent());
-
-        if (pointer.submissionSetId() != null) {
-            dr.addExtension(new Extension(EXT_SUBMISSION_SET, new StringType(pointer.submissionSetId())));
-        }
-
-        return dr;
     }
 
     private void addConsentExtensions(DocumentReference dr, Consent consent) {
@@ -203,111 +178,128 @@ public class PointerFhirMapper {
      * aren't present; a pointer with no stated consent is a protocol
      * violation here, not something we default to accessible.
      */
+    /**
+     * Builds a fresh pointer from a resource received over the wire.
+     * Used both when a forwarded pointer lands from a child node and when parsing new source data.
+     * Throws if the consent extensions aren't present; a pointer with no stated consent is a
+     * protocol violation here, not something we default to accessible.
+     *
+     * <p>M-2: fromFhir() was ~108 lines; extracted helpers to bring each logical section
+     * under the SonarQube S138 method-length limit.
+     */
     public Pointer.Builder fromFhir(DocumentReference dr) {
-        // resourceType defaults to DocumentReference; overridden below
-        // if the source-resource-type extension says otherwise (a
-        // forwarded NEHR-originated pointer).
         Pointer.Builder builder = Pointer.builder()
                 .id(dr.getIdElement().getIdPart())
                 .resourceType("DocumentReference")
                 .status(fromFhirStatus(dr.getStatus()));
 
-        // entryUUID slice - system fixed to urn:ietf:rfc:3986, value
-        // is urn:uuid:{uuid}. If absent (a non-conformant source),
-        // Pointer's own constructor generates a fresh one rather than
-        // this method failing - a missing entryUUID isn't a protocol
-        // violation the way a missing consent extension is.
+        // entryUUID slice: urn:ietf:rfc:3986 system, value starts with urn:uuid:.
+        // Missing entryUUID isn't a protocol violation — Pointer's own constructor generates one.
         dr.getIdentifier().stream()
                 .filter(id -> URN_OID_SYSTEM.equals(id.getSystem())
                         && id.hasValue() && id.getValue().startsWith("urn:uuid:"))
                 .findFirst()
                 .ifPresent(id -> builder.entryUuid(id.getValue().substring("urn:uuid:".length())));
 
+        extractPhn(dr, builder);
+        extractContent(dr, builder);
+        extractContext(dr, builder);
+        extractExtensions(dr, builder);
+        builder.consent(extractConsent(dr));
+
+        return builder;
+    }
+
+    /** Strips "Patient/" prefix via lastIndexOf to avoid mangling a PHN that contains that substring. */
+    private void extractPhn(DocumentReference dr, Pointer.Builder builder) {
         if (dr.hasSubject() && dr.getSubject().hasReference()) {
-            // M-7: use lastIndexOf('/') instead of String.replace("Patient/", "")
-            // so a PHN that happens to contain the substring "Patient/" (unlikely
-            // but theoretically possible for numeric PHNs from a different system)
-            // is not silently mangled. lastIndexOf correctly strips only the final
-            // path segment prefix regardless of the reference's shape.
             String ref = dr.getSubject().getReference();
             int slash = ref.lastIndexOf('/');
             builder.phn(slash >= 0 ? ref.substring(slash + 1) : ref);
         }
-
         if (dr.hasType() && !dr.getType().getCoding().isEmpty()) {
             builder.docTypeLoinc(dr.getType().getCodingFirstRep().getCode());
         }
-
         if (dr.hasContent() && !dr.getContent().isEmpty()) {
             Attachment attachment = dr.getContentFirstRep().getAttachment();
             builder.contentType(attachment.getContentType());
             builder.contentUrl(attachment.getUrl());
         }
+    }
 
-        // context.facilityType is native R4, read directly rather
-        // than from an extension - matches the corrected toFhir,
-        // which stopped writing a redundant extension for the same
-        // data.
-        if (dr.hasContext() && dr.getContext().hasFacilityType()
-                && !dr.getContext().getFacilityType().getCoding().isEmpty()) {
-            Coding facilityCoding = dr.getContext().getFacilityType().getCodingFirstRep();
-            builder.facilityHin(facilityCoding.getCode());
+    /** Reads contentType and contentUrl from the first content element. */
+    private void extractContent(DocumentReference dr, Pointer.Builder builder) {
+        if (dr.hasContent() && !dr.getContent().isEmpty()) {
+            Attachment attachment = dr.getContentFirstRep().getAttachment();
+            builder.contentType(attachment.getContentType());
+            builder.contentUrl(attachment.getUrl());
         }
+    }
 
-        // context.encounter - the native field, holds a full URL as
-        // built by toFhir(); store back just the id portion, same
-        // shape Pointer.nehrEncounterRef expects.
-        if (dr.hasContext() && dr.getContext().hasEncounter()
-                && !dr.getContext().getEncounter().isEmpty()) {
-            String encounterRef = dr.getContext().getEncounterFirstRep().getReference();
+    /**
+     * Reads context.facilityType (native R4) and context.encounter.
+     * Encounter URL is stored back as just the id portion (last path segment).
+     */
+    private void extractContext(DocumentReference dr, Pointer.Builder builder) {
+        if (!dr.hasContext()) return;
+        DocumentReference.DocumentReferenceContextComponent ctx = dr.getContext();
+        if (ctx.hasFacilityType() && !ctx.getFacilityType().getCoding().isEmpty()) {
+            builder.facilityHin(ctx.getFacilityType().getCodingFirstRep().getCode());
+        }
+        if (ctx.hasEncounter() && !ctx.getEncounter().isEmpty()) {
+            String encounterRef = ctx.getEncounterFirstRep().getReference();
             if (encounterRef != null) {
                 int lastSlash = encounterRef.lastIndexOf('/');
                 builder.nehrEncounterRef(lastSlash >= 0 ? encounterRef.substring(lastSlash + 1) : encounterRef);
             }
         }
+    }
 
+    /**
+     * Reads the four custom DHP extensions: consent-accessible, location-excluded,
+     * submission-set-id, and source-resource-type, applying each to the builder.
+     * Does NOT read consent here — that is handled by extractConsent() so it can
+     * validate presence and throw.
+     */
+    private void extractExtensions(DocumentReference dr, Pointer.Builder builder) {
+        for (Extension ext : dr.getExtension()) {
+            String url = ext.getUrl();
+            if (EXT_SUBMISSION_SET.equals(url) && ext.getValue() != null) {
+                builder.submissionSetId(ext.getValue().primitiveValue());
+            } else if (EXT_SOURCE_RESOURCE_TYPE.equals(url) && ext.getValue() != null) {
+                builder.resourceType(ext.getValue().primitiveValue());
+            }
+        }
+    }
+
+    /**
+     * Reads consent-accessible, location-excluded extensions and securityLabel purpose-of-use
+     * codings, assembles a Consent, and throws if consent-accessible is absent (protocol violation).
+     */
+    private Consent extractConsent(DocumentReference dr) {
         Boolean accessible = null;
         boolean locationExcluded = false;
-
         for (Extension ext : dr.getExtension()) {
             String url = ext.getUrl();
             if (EXT_CONSENT_ACCESSIBLE.equals(url) && ext.getValue() instanceof BooleanType bool) {
                 accessible = bool.getValue();
             } else if (EXT_LOCATION_EXCLUDED.equals(url) && ext.getValue() instanceof BooleanType bool) {
                 locationExcluded = bool.getValue();
-            } else if (EXT_SUBMISSION_SET.equals(url) && ext.getValue() != null) {
-                builder.submissionSetId(ext.getValue().primitiveValue());
-            } else if (EXT_SOURCE_RESOURCE_TYPE.equals(url) && ext.getValue() != null) {
-                builder.resourceType(ext.getValue().primitiveValue());
             }
         }
-
-        // purpose-of-use now travels in securityLabel, not a custom
-        // extension - see addConsentExtensions(). Collect every
-        // coding under the PurposeOfUse system rather than assuming
-        // there's at most one.
-        Set<String> purposes = dr.getSecurityLabel().stream()
-                .flatMap(cc -> cc.getCoding().stream())
-                .filter(c -> PURPOSE_OF_USE_SYSTEM.equals(c.getSystem()))
-                .map(Coding::getCode)
-                .collect(java.util.stream.Collectors.toSet());
-
-        // The javadoc on this method says a missing consent extension
-        // is a protocol violation, not something to default to
-        // accessible=true for - the code used to do exactly that
-        // (initialised accessible=true and never actually checked
-        // whether the extension was present at all), which silently
-        // defeated the whole point. Fixed to actually match what was
-        // already documented.
         if (accessible == null) {
             throw new IllegalArgumentException(
                     "DocumentReference " + dr.getIdElement().getIdPart()
                             + " has no consent-accessible extension - refusing to default it");
         }
-
-        builder.consent(Consent.from(!accessible, locationExcluded, purposes));
-
-        return builder;
+        // purpose-of-use travels in securityLabel (not a custom extension).
+        Set<String> purposes = dr.getSecurityLabel().stream()
+                .flatMap(cc -> cc.getCoding().stream())
+                .filter(c -> PURPOSE_OF_USE_SYSTEM.equals(c.getSystem()))
+                .map(Coding::getCode)
+                .collect(java.util.stream.Collectors.toSet());
+        // M-9/M-10: fromAccessible() avoids the confusing !accessible inversion.
+        return Consent.fromAccessible(accessible, locationExcluded, purposes);
     }
 
     private Enumerations.DocumentReferenceStatus toFhirStatus(Pointer.Status status) {

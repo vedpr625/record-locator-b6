@@ -48,11 +48,41 @@ public class Consent {
         this.asOf = asOf;
     }
 
+    /**
+     * Create a Consent from the FHIR wire representation.
+     *
+     * <p>M-9/M-10: the first parameter is {@code optedOut} (true = patient has
+     * opted out, data NOT accessible), which is inverted internally to set
+     * {@code accessible}. The name intentionally matches the FHIR extension
+     * semantics; callers that hold an {@code accessible} boolean should use
+     * {@link #fromAccessible(boolean, boolean, Set)} to avoid a silent inversion.
+     *
+     * @param optedOut       true = patient opted out (consent-accessible extension = false)
+     * @param locationExcluded true = facility details must be withheld
+     * @param purposeOfUse   set of purpose-of-use codes, or null/empty for unrestricted
+     */
     public static Consent from(boolean optedOut, boolean locationExcluded, Set<String> purposeOfUse) {
         String joined = purposeOfUse == null || purposeOfUse.isEmpty()
                 ? null
                 : String.join(",", purposeOfUse);
         return new Consent(!optedOut, locationExcluded, joined, Source.BUNDLE_2A, Instant.now());
+    }
+
+    /**
+     * M-9/M-10: convenience factory that takes {@code accessible} directly
+     * (true = data accessible) to avoid the silent boolean inversion in
+     * {@link #from(boolean, boolean, Set)}.
+     * Prefer this when the calling context works in terms of "accessible" not "opted-out".
+     *
+     * @param accessible       true = data accessible (patient opted in)
+     * @param locationExcluded true = facility details must be withheld
+     * @param purposeOfUse     set of purpose-of-use codes, or null/empty for unrestricted
+     */
+    public static Consent fromAccessible(boolean accessible, boolean locationExcluded, Set<String> purposeOfUse) {
+        String joined = purposeOfUse == null || purposeOfUse.isEmpty()
+                ? null
+                : String.join(",", purposeOfUse);
+        return new Consent(accessible, locationExcluded, joined, Source.BUNDLE_2A, Instant.now());
     }
 
     /**

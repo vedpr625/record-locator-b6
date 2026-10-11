@@ -7,6 +7,7 @@ import lk.gov.moh.dhp.rl.pointer.PointerRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -61,9 +62,10 @@ public class ConsentEventController {
     }
 
     @PostMapping
+    @Transactional
     public ResponseEntity<Void> handle(@Valid @RequestBody ConsentEventRequest request) {
-        log.info("consent-event: phn={} accessible={} locationExcluded={}",
-                request.phn(), request.accessible(), request.locationExcluded());
+        log.info("consent-event: phn=*** accessible={} locationExcluded={}",
+                request.accessible(), request.locationExcluded());
 
         // Step 1: persist the consent decision regardless of whether any pointers
         // exist.  This row is the canonical source of truth that PointerFactory
@@ -84,7 +86,7 @@ public class ConsentEventController {
                 request.purposeOfUse(),
                 Instant.now());
 
-        log.info("consent-event saved for phn={}; {} existing pointer(s) updated", request.phn(), updated);
+        log.info("consent-event saved for phn=***; {} existing pointer(s) updated", updated);
 
         return ResponseEntity.noContent().build();
     }

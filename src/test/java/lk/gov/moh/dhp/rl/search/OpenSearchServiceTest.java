@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.List;
@@ -67,8 +68,9 @@ class OpenSearchServiceTest {
 
     @Test
     void findPhnsByName_opensearchError_returnsEmpty() {
+        // R-6: service now catches RestClientException specifically; use a concrete subtype.
         when(restTemplate.postForObject(anyString(), any(), eq(String.class)))
-                .thenThrow(new RuntimeException("connection refused"));
+                .thenThrow(new ResourceAccessException("connection refused"));
 
         assertThat(service.findPhnsByName("Perera")).isEmpty();
     }
@@ -122,8 +124,9 @@ class OpenSearchServiceTest {
 
     @Test
     void indexPatient_opensearchError_doesNotThrow() {
+        // R-6: service now catches RestClientException specifically; use a concrete subtype.
         when(restTemplate.postForObject(anyString(), any(), eq(String.class)))
-                .thenThrow(new RuntimeException("timeout"));
+                .thenThrow(new ResourceAccessException("timeout"));
 
         PatientDocument doc = PatientDocument.fromDicom("PHN001", "Perera^Kasun", "HIN001");
 

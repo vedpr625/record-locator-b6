@@ -105,21 +105,24 @@ public class ListProvider implements IResourceProvider {
         return true;
     }
 
+    // M-12: delegate to shared utility — was duplicated verbatim from DocumentReferenceProvider.
     private String resolvePhn(ReferenceParam patient, TokenParam patientIdentifier) {
-        if (patient != null) {
-            return patient.getIdPart();
-        }
-        if (patientIdentifier != null) {
-            return patientIdentifier.getValue();
-        }
-        throw new InvalidRequestException("either patient or patient.identifier is required");
+        return FhirParamUtil.requirePhn(patient, patientIdentifier);
     }
 
+    /**
+     * M-5: Unknown status values now return 400 as the FHIR spec requires.
+     * Previously, unknown values silently fell through to CURRENT, which masked
+     * caller typos and could return unexpected results.
+     */
     private Pointer.Status parseStatus(String value) {
-        return switch (value) {
+        if (value == null) return Pointer.Status.CURRENT;
+        return switch (value.toLowerCase()) {
+            case "current" -> Pointer.Status.CURRENT;
             case "superseded" -> Pointer.Status.SUPERSEDED;
             case "entered-in-error" -> Pointer.Status.ENTERED_IN_ERROR;
-            default -> Pointer.Status.CURRENT;
+            default -> throw new InvalidRequestException(
+                    "Unknown status value '" + value + "'; expected current, superseded, or entered-in-error");
         };
     }
 
@@ -128,70 +131,53 @@ public class ListProvider implements IResourceProvider {
     private static final String URN_OID_SYSTEM = "urn:ietf:rfc:3986";
     private static final String IHE_SOURCE_ID_EXT = "https://profiles.ihe.net/ITI/MHD/StructureDefinition/ihe-sourceId";
 
+    // M-3: toListResource() was ~65 lines; extracted addSubmissionSetIdentifiers() helper
+    // to bring each logical section under the SonarQube S138 method-length limit.
     private ListResource toListResource(String submissionSetId, String phn, List<Pointer> members) {
         ListResource list = new ListResource();
+        // L-2: UTF-8 explicit so deterministic UUID is stable regardless of JVM default charset.
         String entryUuid = UUID.nameUUIDFromBytes(
                 submissionSetId.getBytes(java.nio.charset.StandardCharsets.UTF_8)).toString();
-        // L-2: use UTF-8 explicitly so deterministic UUID generation is stable
-        // regardless of the JVM's default charset (which varies by OS/container).
-        // The previous getBytes() call used the platform default, meaning the same
-        // submissionSetId could produce a different UUID on a system with a
-        // non-UTF-8 default charset, breaking idempotency.
         list.setId(entryUuid);
-
-        // The uniqueId slice (SubmissionSet.uniqueId per the real
-        // IHE.MHD.SubmissionSetUniqueIdIdentifier profile) - was
-        // previously a plain, half-conformant identifier with the
-        // wrong value (submissionSetId with no urn:uuid: prefix) and
-        // no type marker at all. Fixed to match the confirmed real
-        // shape: a fixed type.coding identifying this AS the
-        // uniqueId slice, system is our own namespace, value is the
-        // actual submission set business id.
-        list.addIdentifier(new Identifier()
-                .setSystem(homeCommunityId)
-                .setValue(submissionSetId)
-                .setType(new CodeableConcept()
-                        .addCoding(new Coding(SUBMISSION_SET_UNIQUE_ID_TYPE_SYSTEM, "uniqueId", null))));
-
-        // The entryUUID slice - identifies the List RESOURCE itself.
-        // Reusing the same deterministic UUID as the resource's own
-        // id is correct here (unlike Pointer, which needed a
-        // separately-stored random UUID because Pointer.id isn't
-        // guaranteed UUID-shaped) - this UUID IS already guaranteed
-        // UUID-shaped by construction (nameUUIDFromBytes).
-        list.addIdentifier(new Identifier()
-                .setUse(Identifier.IdentifierUse.OFFICIAL)
-                .setSystem(URN_OID_SYSTEM)
-                .setValue("urn:uuid:" + entryUuid));
-
+        addSubmissionSetIdentifiers(list, submissionSetId, entryUuid);
         list.setStatus(ListResource.ListStatus.CURRENT);
         list.setMode(ListResource.ListMode.WORKING);
         list.setCode(new CodeableConcept().addCoding(
                 new Coding(SUBMISSION_SET_SYSTEM, "submissionset", "SubmissionSet")));
         list.setSubject(new Reference("Patient/" + phn));
-
-        // sourceId is 1..1 MANDATORY under the real profile -
-        // "Publisher organization identity of the SubmissionSet."
-        // No per-submission publisher identity exists anywhere in
-        // this pipeline (same honest gap as author on
-        // DocumentReference), so homeCommunityId - the one
-        // organization-level identity this app actually has - is
-        // used as the closest available value rather than leaving a
-        // mandatory field unset.
+        // sourceId is 1..1 MANDATORY — use homeCommunityId as the closest available
+        // publisher identity (no per-submission publisher exists in this pipeline).
         list.addExtension(new Extension(IHE_SOURCE_ID_EXT,
                 new Identifier().setSystem(URN_OID_SYSTEM).setValue(homeCommunityId)));
-
         members.stream()
                 .map(Pointer::indexedAt)
                 .min(Comparator.naturalOrder())
                 .ifPresent(t -> list.setDate(java.util.Date.from(t)));
-
         for (Pointer member : members) {
             ListResource.ListEntryComponent entry = list.addEntry();
             entry.setItem(new Reference("DocumentReference/" + member.id()));
             entry.setDate(java.util.Date.from(member.indexedAt()));
         }
         return list;
+    }
+
+    /**
+     * Adds the two IHE-required identifier slices to a SubmissionSet List resource:
+     * the uniqueId slice (business id with type marker) and the entryUUID slice
+     * (the resource's own UUID, use=official, system=urn:ietf:rfc:3986).
+     */
+    private void addSubmissionSetIdentifiers(ListResource list, String submissionSetId, String entryUuid) {
+        // uniqueId slice: type marker + our namespace + submission set business id.
+        list.addIdentifier(new Identifier()
+                .setSystem(homeCommunityId)
+                .setValue(submissionSetId)
+                .setType(new CodeableConcept()
+                        .addCoding(new Coding(SUBMISSION_SET_UNIQUE_ID_TYPE_SYSTEM, "uniqueId", null))));
+        // entryUUID slice: identifies the List resource itself (not the document).
+        list.addIdentifier(new Identifier()
+                .setUse(Identifier.IdentifierUse.OFFICIAL)
+                .setSystem(URN_OID_SYSTEM)
+                .setValue("urn:uuid:" + entryUuid));
     }
 
     private Bundle toBundle(List<ListResource> lists) {

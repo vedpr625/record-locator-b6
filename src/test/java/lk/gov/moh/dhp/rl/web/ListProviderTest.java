@@ -155,15 +155,14 @@ class ListProviderTest {
     }
 
     @Test
-    void search_unknownStatus_defaultsToCurrent() {
-        when(consentGate.checkSearch("PHN001", "ITI-66")).thenReturn(false);
-        when(searchService.submissionSetsWithMembers("PHN001", Pointer.Status.CURRENT))
-                .thenReturn(Map.of());
-
-        provider.search(new ReferenceParam("PHN001"), null,
-                null, new TokenParam("anything-else"), null, null);
-
-        verify(searchService).submissionSetsWithMembers("PHN001", Pointer.Status.CURRENT);
+    void search_unknownStatus_throws400() {
+        // M-5: unknown status values now throw InvalidRequestException (400) instead of
+        // silently falling back to CURRENT, matching the FHIR spec and DocumentReferenceProvider.
+        assertThatThrownBy(() -> provider.search(
+                new ReferenceParam("PHN001"), null,
+                null, new TokenParam("anything-else"), null, null))
+                .isInstanceOf(InvalidRequestException.class)
+                .hasMessageContaining("Unknown status value");
     }
 
     // ── identifier filter ─────────────────────────────────────────────────────

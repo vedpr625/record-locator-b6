@@ -1,13 +1,16 @@
 package lk.gov.moh.dhp.rl.search;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.ArrayList;
@@ -45,7 +48,8 @@ public class OpenSearchService extends OpenSearchServicePort {
 
     private static final Logger log = LoggerFactory.getLogger(OpenSearchService.class);
 
-    @Value("${rl.opensearch.url:http://localhost:9200}")
+    // S-3: default to HTTPS; operators must explicitly opt down to HTTP if needed.
+    @Value("${rl.opensearch.url:https://localhost:9200}")
     private String baseUrl;
 
     @Value("${rl.opensearch.index:rl-patients}")
@@ -60,6 +64,15 @@ public class OpenSearchService extends OpenSearchServicePort {
     public OpenSearchService(RestTemplate restTemplate, ObjectMapper objectMapper) {
         this.restTemplate = restTemplate;
         this.objectMapper = objectMapper;
+    }
+
+    /** S-3: warn at startup when the OpenSearch URL is not HTTPS. */
+    @PostConstruct
+    void checkBaseUrl() {
+        if (baseUrl != null && !baseUrl.startsWith("https://")) {
+            log.warn("rl.opensearch.url '{}' is not HTTPS — patient data may be transmitted in plain text",
+                    baseUrl);
+        }
     }
 
     /**
@@ -102,7 +115,9 @@ public class OpenSearchService extends OpenSearchServicePort {
                 }
             }
             return phns;
-        } catch (Exception e) {
+        } catch (RestClientException | JsonProcessingException e) {
+            // R-6: catch specific types; RestClientException covers HTTP/IO errors from
+            // RestTemplate; JsonProcessingException covers malformed OpenSearch responses.
             log.warn("OpenSearch name search failed for '{}': {}", name, e.getMessage());
             return List.of();
         }
@@ -137,11 +152,13 @@ public class OpenSearchService extends OpenSearchServicePort {
                     ),
                     "doc_as_upsert", true);
             restTemplate.postForObject(url, body, String.class);
-        } catch (Exception e) {
+        } catch (RestClientException e) {
+            // R-6/S-4: narrow to RestClientException (HTTP/IO errors from RestTemplate);
+            // PHN is masked — the OpenSearch index key must never appear in logs.
             // Index failure must never fail pointer creation — the pointer is in
             // PostgreSQL already at this point; the patient just won't appear in
             // name searches until the index catches up (or a re-index job runs).
-            log.warn("failed to index patient {} in OpenSearch: {}", doc.phn(), e.getMessage());
+            log.warn("failed to index patient *** in OpenSearch: {}", e.getMessage());
         }
     }
 }

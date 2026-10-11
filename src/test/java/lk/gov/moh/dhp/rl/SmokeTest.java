@@ -87,7 +87,7 @@ class SmokeTest {
         mockMvc.perform(post("/pointer-events")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                            {"id":"doc-001","phn":"PHN001","resourceType":"DocumentReference",
+                            {"id":"doc-001","phn":"1234567894","resourceType":"DocumentReference",
                              "contentUrl":"http://example.com","facilityHin":"HIN001"}
                             """))
                 .andExpect(result -> {
@@ -103,7 +103,7 @@ class SmokeTest {
         mockMvc.perform(post("/consent-events")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                            {"phn":"PHN001","accessible":false,
+                            {"phn":"1234567893","accessible":false,
                              "locationExcluded":false}
                             """))
                 .andExpect(status().isUnauthorized());
@@ -117,7 +117,7 @@ class SmokeTest {
                         .with(jwt())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                            {"id":"smoke-doc-001","phn":"PHN-SMOKE","resourceType":"DocumentReference",
+                            {"id":"smoke-doc-001","phn":"1234567890","resourceType":"DocumentReference",
                              "contentUrl":"http://example.com/smoke","facilityHin":"HIN-SMOKE",
                              "facilityName":"Smoke Hospital"}
                             """))
@@ -127,7 +127,7 @@ class SmokeTest {
     @Test
     void pointerEvents_withJwt_idempotentReturns200() throws Exception {
         String payload = """
-                {"id":"smoke-doc-idem","phn":"PHN-IDEM","resourceType":"DocumentReference",
+                {"id":"smoke-doc-idem","phn":"1234567891","resourceType":"DocumentReference",
                  "contentUrl":"http://example.com/idem","facilityHin":"HIN-IDEM"}
                 """;
 
@@ -152,7 +152,7 @@ class SmokeTest {
                         .with(jwt())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                            {"phn":"PHN-CONSENT","accessible":false,"locationExcluded":false}
+                            {"phn":"1234567892","accessible":false,"locationExcluded":false}
                             """))
                 .andExpect(status().isNoContent());
     }

@@ -45,7 +45,7 @@ class PointerEventControllerTest {
         PointerEventRequest req = validRequest();
         // H-8: ensure() returns EnsureResult with created=true for a new pointer
         when(pointerFactory.ensure(any()))
-                .thenReturn(EnsureResult.created(buildPointer("study-001", "PHN001")));
+                .thenReturn(EnsureResult.created(buildPointer("study-001", "1234567890")));
 
         mockMvc.perform(post("/pointer-events")
                         .with(jwt())
@@ -60,7 +60,7 @@ class PointerEventControllerTest {
         PointerEventRequest req = validRequest();
         // H-8: ensure() returns EnsureResult with created=false for an existing pointer
         when(pointerFactory.ensure(any()))
-                .thenReturn(EnsureResult.updated(buildPointer("study-001", "PHN001")));
+                .thenReturn(EnsureResult.updated(buildPointer("study-001", "1234567890")));
 
         mockMvc.perform(post("/pointer-events")
                         .with(jwt())
@@ -87,7 +87,7 @@ class PointerEventControllerTest {
     @Test
     void post_missingId_returns400() throws Exception {
         PointerEventRequest invalid = new PointerEventRequest(
-                "", "PHN001", null, "ImagingStudy",
+                "", "1234567890", null, "ImagingStudy",
                 "18747-6", "application/dicom+json", "http://wado",
                 "HIN001", "Hosp", null, null);
 
@@ -110,7 +110,7 @@ class PointerEventControllerTest {
     void post_convertsToNewPointerRequest_withNationalSyncedFalse() throws Exception {
         PointerEventRequest req = validRequest();
         when(pointerFactory.ensure(any()))
-                .thenReturn(EnsureResult.created(buildPointer("study-001", "PHN001")));
+                .thenReturn(EnsureResult.created(buildPointer("study-001", "1234567890")));
 
         mockMvc.perform(post("/pointer-events")
                 .with(jwt())
@@ -124,7 +124,7 @@ class PointerEventControllerTest {
 
     private PointerEventRequest validRequest() {
         return new PointerEventRequest(
-                "study-001", "PHN001", null, "ImagingStudy",
+                "study-001", "1234567890", null, "ImagingStudy",
                 "18747-6", "application/dicom+json", "http://wado",
                 "HIN001", "Hosp", null, null);
     }
@@ -141,4 +141,6 @@ class PointerEventControllerTest {
                 .nationalSynced(false)
                 .build();
     }
+
+    // NOTE: buildPointer phn must be a valid 10-digit string per @Pattern validation
 }

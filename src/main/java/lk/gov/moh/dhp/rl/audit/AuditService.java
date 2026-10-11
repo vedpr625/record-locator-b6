@@ -45,7 +45,7 @@ public class AuditService {
         try {
             repository.save(AuditEvent.of(eventType, phn, resourceId, outcome));
         } catch (Exception e) {
-            log.warn("failed to write audit event type={} phn={}: {}", eventType, phn, e.getMessage());
+            log.warn("failed to write audit event type={} phn=***: {}", eventType, e.getMessage());
         }
     }
 }
