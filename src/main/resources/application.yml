@@ -1,0 +1,54 @@
+spring:
+  application:
+    name: record-locator
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/record_locator}
+    username: ${DB_USER:record_locator}
+    password: ${DB_PASSWORD:}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${IDP_ISSUER_URI:}
+
+server:
+  port: ${SERVER_PORT:8080}
+
+rl:
+  home-community-id: ${HOME_COMMUNITY_ID:urn:oid:2.16.840.1.113883.3.DHP}
+  security:
+    # Disabled until a reverse proxy doing real client-certificate
+    # verification is actually deployed in front of this app - see
+    # SecurityConfig.MtlsHeaderFilter's javadoc.
+    mtls-header-enabled: ${MTLS_HEADER_ENABLED:false}
+    mtls-header-name: ${MTLS_HEADER_NAME:X-Client-Cert-Verified}
+  orthanc:
+    base-url: ${ORTHANC_BASE_URL:http://localhost:8042}
+    facility-hin: ${FACILITY_HIN:}
+    facility-name: ${FACILITY_NAME:}
+    poll-interval-ms: 30000
+  consent:
+    # true = new pointers default to accessible (correct for Bundle-6 edge with
+    # no Bundle-2a consent webhook). Set false when a consent webhook is active.
+    default-accessible: ${RL_CONSENT_DEFAULT_ACCESSIBLE:true}
+  opensearch:
+    # Set RL_OPENSEARCH_ENABLED=true to activate the OpenSearch name index.
+    # When disabled (the default), patient-name searches return no results and
+    # indexPatient() calls are no-ops — the app works as a pure PostgreSQL service.
+    enabled: ${RL_OPENSEARCH_ENABLED:false}
+    url: ${OPENSEARCH_URL:http://localhost:9200}
+    # Index that holds one document per PHN.  Create it before enabling:
+    #   PUT /rl-patients  (see V4__rename_sludi_to_phn.sql for the mapping)
+    index: ${OPENSEARCH_INDEX:rl-patients}
+    # Cap the PHN list returned by a name search to avoid huge IN clauses.
+    max-name-results: ${OPENSEARCH_MAX_NAME_RESULTS:200}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health

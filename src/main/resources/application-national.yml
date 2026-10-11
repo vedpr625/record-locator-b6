@@ -1,0 +1,10 @@
+spring:
+  config:
+    activate:
+      on-profile: national
+
+rl:
+  orthanc:
+    enabled: false
+  federation:
+    parent-url: ""

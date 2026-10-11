@@ -1,0 +1,6 @@
+# Bundle 6 edge profile — local Orthanc poller only.
+# RabbitMQ, federation, and NEHR are not used.
+spring:
+  config:
+    activate:
+      on-profile: edge
