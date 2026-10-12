@@ -1,0 +1,97 @@
+services:
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: rl-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: record_locator
+      POSTGRES_USER: record_locator
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U record_locator"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  opensearch:
+    image: opensearchproject/opensearch:2.13.0
+    container_name: rl-opensearch
+    restart: unless-stopped
+    environment:
+      - discovery.type=single-node
+      - DISABLE_SECURITY_PLUGIN=true          # no TLS needed inside Docker network
+      - OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m
+    volumes:
+      - opensearch-data:/usr/share/opensearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health | grep -qv '\"status\":\"red\"'"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+
+  opensearch-init:
+    image: curlimages/curl:8.7.1
+    container_name: rl-opensearch-init
+    depends_on:
+      opensearch:
+        condition: service_healthy
+    restart: on-failure
+    entrypoint: >
+      sh -c "
+        curl -sf http://opensearch:9200/rl-patients > /dev/null 2>&1 && echo 'Index already exists' && exit 0;
+        curl -s -X PUT http://opensearch:9200/rl-patients
+          -H 'Content-Type: application/json'
+          -d '{
+            \"mappings\": {
+              \"properties\": {
+                \"phn\":        { \"type\": \"keyword\" },
+                \"givenName\":  { \"type\": \"text\", \"analyzer\": \"standard\" },
+                \"familyName\": { \"type\": \"text\", \"analyzer\": \"standard\" },
+                \"fullName\":   { \"type\": \"text\", \"analyzer\": \"standard\" },
+                \"facilityHin\":{ \"type\": \"keyword\" }
+              }
+            }
+          }' && echo 'Index created'
+      "
+
+  app:
+    image: eclipse-temurin:21-jre-alpine
+    container_name: rl-app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      opensearch:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: default
+      DB_URL: jdbc:postgresql://postgres:5432/record_locator
+      DB_USER: record_locator
+      DB_PASSWORD: ${DB_PASSWORD}
+      IDP_ISSUER_URI: ${IDP_ISSUER_URI:-https://keycloak.registry.dev.internal.asthrahealthtech.com/realms/bundle-5}
+      RL_OPENSEARCH_ENABLED: "true"
+      OPENSEARCH_URL: http://opensearch:9200
+      OPENSEARCH_INDEX: rl-patients
+      OPENSEARCH_MAX_NAME_RESULTS: "200"
+      RL_CONSENT_DEFAULT_ACCESSIBLE: "true"
+      MTLS_HEADER_ENABLED: "false"
+      SERVER_PORT: "8080"
+    volumes:
+      - ./deploy/record-locator.jar:/app/record-locator.jar:ro
+    working_dir: /app
+    command: ["java", "-jar", "/app/record-locator.jar"]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health | grep -q UP"]
+      interval: 20s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+
+volumes:
+  postgres-data:
+  opensearch-data:
