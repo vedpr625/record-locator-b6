@@ -1,20 +1,17 @@
 # ═══════════════════════════════════════════════════════════════════════════════
-# Bundle 6 — Instance B  (Kandy Teaching Hospital)
+# Bundle 6 — Instance B  (NHSL - National Hospital of Sri Lanka)
+# Server: dcmb.duckdns.org  /  35.154.42.19
 # ═══════════════════════════════════════════════════════════════════════════════
 #
 # Services on this instance:
 #   orthanc-b          Hospital B PACS  — DICOM port 4242, REST/DICOMweb 8042
-#   hospital-ris-b     RIS UI           — port 8080
-#   orthanc-poller-b   Registers studies into national-rl — port 8081
-#   dicomweb-proxy-b   DICOMweb proxy for OHIF  — port 8090
-#   ohif-b             OHIF viewer      — port 3001
+#   hospital-ris-b     RIS UI           — port 8081 (nginx proxies / → 8081)
+#   orthanc-poller-b   Registers studies into national-rl — internal only
+#   ohif-b             OHIF viewer      — port 3001 (nginx proxies /ohif/)
 #
-# NOTE: Same ports as Instance A — no conflicts because they are separate machines.
-#
-# ── Required env vars (copy aws.env.template → aws.env, fill in) ──────────────
-#   INSTANCE_B_IP          public IP of THIS instance
-#   INSTANCE_C_IP          public IP of Instance C (national-rl, referral-api)
-#   national-rl v2 uses dev profile (no auth) — no RL_API_USER/PASS needed
+# ── Required env vars ─────────────────────────────────────────────────────────
+#   INSTANCE_B_IP=35.154.42.19           (dcmb public IP)
+#   INSTANCE_C_IP=<central-lk public IP> (national-rl + referral-api server)
 # ═══════════════════════════════════════════════════════════════════════════════
 
 services:
@@ -25,30 +22,32 @@ services:
     container_name: orthanc-b
     restart: unless-stopped
     ports:
-      - "4242:4242"   # DICOM C-STORE
+      - "4242:4242"   # DICOM C-STORE from modality equipment
       - "8042:8042"   # REST / DICOMweb / UI
     environment:
-      ORTHANC__NAME:                    "HOSP-B-PACS"
+      ORTHANC__NAME:                    "NHSL-PACS"
       ORTHANC__DICOM_AET:               "ORTHANC-B"
       ORTHANC__DICOM_PORT:              "4242"
       ORTHANC__HTTP_PORT:               "8042"
       ORTHANC__AUTHENTICATION_ENABLED:  "false"
       ORTHANC__REMOTE_ACCESS_ALLOWED:   "true"
-      # CORS — Authorization header is required for OHIF WADO pixel-data fetches
       ORTHANC__HTTP_ALLOW_CORS:         "true"
       ORTHANC__HTTP_CORS_ALLOW_ORIGIN:  "*"
       ORTHANC__HTTP_CORS_ALLOW_METHODS: "GET,POST,PUT,DELETE,OPTIONS"
       ORTHANC__HTTP_CORS_ALLOW_HEADERS: "Authorization,Content-Type,Accept,DNT,X-CustomHeader,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control"
-      # DICOMweb plugin
       ORTHANC__DICOM_WEB__ENABLE:       "true"
       ORTHANC__DICOM_WEB__ROOT:         "/dicom-web"
       ORTHANC__DICOM_WEB__ENABLE_WADO:  "true"
       ORTHANC__DICOM_WEB__WADO_ROOT:    "/wado"
-      # Central peer — public IP of Instance C, NOT a Docker hostname
-      ORTHANC__DICOM_MODALITIES: >
-        {"central": ["CENTRAL-PACS", "${ORTHANC_CENTRAL_DICOM_HOST:-127.0.0.1}", 4243]}
     volumes:
       - orthanc-b-data:/var/lib/orthanc/db
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8042/app/explorer.html"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
   # ── Hospital B RIS ──────────────────────────────────────────────────────────
   hospital-ris-b:
     image: eclipse-temurin:17-jre-alpine
@@ -56,38 +55,43 @@ services:
     restart: unless-stopped
     depends_on:
       orthanc-b:
-        condition: service_started
+        condition: service_healthy
     ports:
-      - "8080:8080"
+      - "8081:8081"
     volumes:
       - ./hospital-ris.jar:/app/hospital-ris.jar:ro
+      - /opt/ris/sample-images:/opt/ris/sample-images:ro
     command: ["java", "-jar", "/app/hospital-ris.jar"]
     environment:
-      PORT:                    "8080"
-      ORTHANC_HOST:            "orthanc-b"
+      PORT:                    "8081"
+      ORTHANC_REST_URL:        "http://orthanc-b:8042"
       ORTHANC_DICOM_PORT:      "4242"
       ORTHANC_AE_TITLE:        "ORTHANC-B"
       ORTHANC_DICOM_WEB_BASE:  "http://orthanc-b:8042/dicom-web"
-      ORTHANC_PUBLIC_BASE:     "http://${INSTANCE_B_IP}:8042/dicom-web"
+      ORTHANC_PUBLIC_BASE:     "https://dcmb.duckdns.org/orthanc"
       RECORD_LOCATOR_URL:      "http://${INSTANCE_C_IP}:8082"
       NATIONAL_RL_URL:         "http://${INSTANCE_C_IP}:8082"
-      NATIONAL_RL_USER:        "nhsl"
-      NATIONAL_RL_PASS:        "changeme"
       REFERRAL_API_URL:        "http://${INSTANCE_C_IP}:8085"
-      ORTHANC_REST_URL:        "http://orthanc-b:8042"
-      CENTRAL_MODALITY_NAME:   "central"
-      # Hospital identity & theme
-      HOSPITAL_THEME:          "kandy"
-      HOSPITAL_NAME:           "Kandy Teaching Hospital"
-      HOSPITAL_SHORT_CODE:     "KTH"
-      FACILITY_ID:             "HOSP-KANDY-001"
-      FACILITY_NAME:           "Kandy Teaching Hospital"
-      MODALITY_INSTITUTION:    "Kandy Teaching Hospital"
-      MODALITY_STATION:        "RIS-KTH-01"
-      REFERRAL_OHIF_URL:       "http://${INSTANCE_B_IP}:3001"
-      REFERRAL_ORTHANC_UI_URL: "http://${INSTANCE_B_IP}:8042/ui/app/"
+      # Hospital identity — NHSL
+      HOSPITAL_THEME:          "nhsl"
+      HOSPITAL_NAME:           "National Hospital of Sri Lanka"
+      HOSPITAL_SHORT_CODE:     "NHSL"
+      FACILITY_ID:             "org-dgh"
+      FACILITY_NAME:           "National Hospital of Sri Lanka"
+      MODALITY_INSTITUTION:    "National Hospital of Sri Lanka"
+      MODALITY_STATION:        "RIS-NHSL-01"
+      # Sample X-ray images folder (JPEG → DICOM conversion)
+      SAMPLE_IMAGES_PATH:      "/opt/ris/sample-images"
+      # External RIS notification
+      RIS_ENABLED:             "true"
+      RIS_URL:                 "https://nova-develop-ris.external.dxdyhosting.xyz/api/v1/ris/ImagingStudy"
+      RIS_FACILITY_ID:         "org-dgh"
+      OHIF_VIEWER_BASE_URL:    "https://dcmb.duckdns.org/ohif/viewer"
+      # UI quick-links
+      REFERRAL_OHIF_URL:       "https://dcmb.duckdns.org/ohif/viewer"
+      REFERRAL_ORTHANC_UI_URL: "https://dcmb.duckdns.org/orthanc/ui/app/"
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8080/actuator/health"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:8081/actuator/health"]
       interval: 15s
       timeout: 5s
       retries: 10
@@ -100,57 +104,25 @@ services:
     restart: unless-stopped
     depends_on:
       orthanc-b:
-        condition: service_started
-    ports:
-      - "8081:8081"
+        condition: service_healthy
     volumes:
       - ./orthanc-poller.jar:/app/orthanc-poller.jar:ro
     command: ["java", "-jar", "/app/orthanc-poller.jar"]
     environment:
-      SERVER_PORT:         "8081"
+      SERVER_PORT:         "8083"
       ORTHANC_URL:         "http://orthanc-b:8042"
-      # national-rl v2 on Instance C — always public IP, FHIR federation
       NATIONAL_RL_URL:     "http://${INSTANCE_C_IP}:8082"
-      NATIONAL_RL_USER:    "nhsl"
-      NATIONAL_RL_PASS:    "changeme"
       POLL_INTERVAL_MS:    "15000"
-      FACILITY_ID:         "HOSP-KANDY-001"
-      FACILITY_HIN:        "urn:oid:2.16.840.1.113883.3.DHP|HOSP-KANDY-001"
-      FACILITY_NAME:       "Kandy Teaching Hospital"
-      ORTHANC_PUBLIC_BASE: "http://${INSTANCE_B_IP}:8042"
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8081/actuator/health"]
-      interval: 15s
-      timeout: 5s
-      retries: 10
-      start_period: 30s
-
-  # ── DICOMweb Proxy B ─────────────────────────────────────────────────────────
-  dicomweb-proxy-b:
-    image: eclipse-temurin:17-jre-alpine
-    container_name: dicomweb-proxy-b
-    restart: unless-stopped
-    ports:
-      - "8090:8090"
-    volumes:
-      - ./dicomweb-proxy.jar:/app/dicomweb-proxy.jar:ro
-    command: ["java", "-jar", "/app/dicomweb-proxy.jar"]
-    environment:
-      SERVER_PORT:      "8090"
-      NATIONAL_RL_URL:  "http://${INSTANCE_C_IP}:8082"
-      NATIONAL_RL_USER: "nhsl"
-      NATIONAL_RL_PASS: "changeme"
-      FACILITY_ID:      "HOSP-KANDY-001"
-      ORTHANC_URL:      "http://orthanc-b:8042"  # for QIDO instance count enrichment
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8090/actuator/health"]
-      interval: 15s
-      timeout: 5s
-      retries: 10
-      start_period: 30s
+      FACILITY_HIN:        "org-dgh"
+      FACILITY_NAME:       "National Hospital of Sri Lanka"
+      ORTHANC_PUBLIC_BASE: "https://dcmb.duckdns.org/orthanc"
+      # External RIS notification
+      RIS_ENABLED:         "true"
+      RIS_URL:             "https://nova-develop-ris.external.dxdyhosting.xyz/api/v1/ris/ImagingStudy"
+      RIS_FACILITY_ID:     "org-dgh"
+      OHIF_VIEWER_BASE_URL: "https://dcmb.duckdns.org/ohif/viewer"
 
   # ── OHIF Viewer B ────────────────────────────────────────────────────────────
-  # ohif-b.js must use public IP of THIS instance — browser fetches WADO directly
   ohif-b:
     image: ohif/app:v3.9.0
     container_name: ohif-b
@@ -160,7 +132,7 @@ services:
     volumes:
       - ./ohif-b.js:/usr/share/nginx/html/app-config.js:ro
     depends_on:
-      - dicomweb-proxy-b
+      - orthanc-b
 
 volumes:
   orthanc-b-data:

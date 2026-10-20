@@ -1,26 +1,17 @@
 # ═══════════════════════════════════════════════════════════════════════════════
-# Bundle 6 — Instance A  (Colombo National Hospital)
+# Bundle 6 — Instance A  (Homagama Hospital)
+# Server: dcma.duckdns.org  /  35.154.170.229
 # ═══════════════════════════════════════════════════════════════════════════════
 #
 # Services on this instance:
 #   orthanc-a          Hospital A PACS  — DICOM port 4242, REST/DICOMweb 8042
-#   hospital-ris-a     RIS UI           — port 8080
-#   orthanc-poller-a   Registers studies into national-rl — port 8081
-#   dicomweb-proxy-a   DICOMweb proxy for OHIF  — port 8090
-#   ohif-a             OHIF viewer      — port 3001
+#   hospital-ris-a     RIS UI           — port 8081 (nginx proxies / → 8081)
+#   orthanc-poller-a   Registers studies into national-rl — internal only
+#   ohif-a             OHIF viewer      — port 3001 (nginx proxies /ohif/)
 #
-# ── Required env vars (copy aws.env.template → aws.env, fill in) ──────────────
-#   INSTANCE_A_IP          public IP of THIS instance  (e.g. 3.110.15.3)
-#   INSTANCE_C_IP          public IP of Instance C     (e.g. 43.205.239.225)
-#   national-rl v2 uses dev profile (no auth) — no RL_API_USER/PASS needed
-#   REFERRAL_DB_PASSWORD        not used here, keep blank
-#
-# ── CORS lessons ──────────────────────────────────────────────────────────────
-# Orthanc CORS must include "Authorization" in allow-headers.
-# OHIF must point to the PUBLIC IP of the dicomweb-proxy, never localhost or
-# a Docker container name — the browser fetches WADO directly.
-# dicomweb-proxy returns its own CORS headers for OHIF; Orthanc headers are
-# only needed because the proxy forwards pixel-data requests to Orthanc.
+# ── Required env vars ─────────────────────────────────────────────────────────
+#   INSTANCE_A_IP=35.154.170.229         (dcma public IP)
+#   INSTANCE_C_IP=<central-lk public IP> (national-rl + referral-api server)
 # ═══════════════════════════════════════════════════════════════════════════════
 
 services:
@@ -31,29 +22,23 @@ services:
     container_name: orthanc-a
     restart: unless-stopped
     ports:
-      - "4242:4242"   # DICOM C-STORE (RIS-A → Orthanc-A)
+      - "4242:4242"   # DICOM C-STORE from modality equipment
       - "8042:8042"   # REST / DICOMweb / UI
     environment:
-      ORTHANC__NAME:                    "HOSP-A-PACS"
+      ORTHANC__NAME:                    "HOMAGAMA-PACS"
       ORTHANC__DICOM_AET:               "ORTHANC-A"
       ORTHANC__DICOM_PORT:              "4242"
       ORTHANC__HTTP_PORT:               "8042"
       ORTHANC__AUTHENTICATION_ENABLED:  "false"
       ORTHANC__REMOTE_ACCESS_ALLOWED:   "true"
-      # CORS — must allow Authorization header or OHIF WADO fetches fail
       ORTHANC__HTTP_ALLOW_CORS:         "true"
       ORTHANC__HTTP_CORS_ALLOW_ORIGIN:  "*"
       ORTHANC__HTTP_CORS_ALLOW_METHODS: "GET,POST,PUT,DELETE,OPTIONS"
       ORTHANC__HTTP_CORS_ALLOW_HEADERS: "Authorization,Content-Type,Accept,DNT,X-CustomHeader,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control"
-      # DICOMweb plugin — required for OHIF and orthanc-poller
       ORTHANC__DICOM_WEB__ENABLE:       "true"
       ORTHANC__DICOM_WEB__ROOT:         "/dicom-web"
       ORTHANC__DICOM_WEB__ENABLE_WADO:  "true"
       ORTHANC__DICOM_WEB__WADO_ROOT:    "/wado"
-      # Central Orthanc peer — hospital A C-STOREs referred studies to Instance C
-      # ORTHANC_CENTRAL_DICOM_HOST must be the PUBLIC IP of Instance C, NOT a hostname
-      ORTHANC__DICOM_MODALITIES: >
-        {"central": ["CENTRAL-PACS", "${ORTHANC_CENTRAL_DICOM_HOST:-127.0.0.1}", 4243]}
     volumes:
       - orthanc-a-data:/var/lib/orthanc/db
     healthcheck:
@@ -72,73 +57,39 @@ services:
       orthanc-a:
         condition: service_healthy
     ports:
-      - "8080:8080"
-    volumes:
-      - ./hospital-ris.jar:/app/hospital-ris.jar:ro
-    command: ["java", "-jar", "/app/hospital-ris.jar"]
-    environment:
-      PORT:                    "8080"
-      ORTHANC_HOST:            "orthanc-a"
-      ORTHANC_DICOM_PORT:      "4242"
-      ORTHANC_AE_TITLE:        "ORTHANC-A"
-      # Internal URL for C-STORE network connection (Docker internal — OK, same instance)
-      ORTHANC_DICOM_WEB_BASE:  "http://orthanc-a:8042/dicom-web"
-      # Public URL stored in national-rl as wadoRsUrl (must be reachable from browser + other instances)
-      ORTHANC_PUBLIC_BASE:     "http://${INSTANCE_A_IP}:8042/dicom-web"
-      # Record Locator — always public IP, never Docker hostname
-      # v2 FHIR endpoint: GET /fhir/r4/DocumentReference?patient=Patient/{phn}&status=current
-      RECORD_LOCATOR_URL:      "http://${INSTANCE_C_IP}:8082"
-      NATIONAL_RL_URL:         "http://${INSTANCE_C_IP}:8082"
-      # E-Referral (Instance C)
-      REFERRAL_API_URL:        "http://${INSTANCE_C_IP}:8085"
-      ORTHANC_REST_URL:        "http://orthanc-a:8042"
-      CENTRAL_MODALITY_NAME:   "central"
-      # Hospital identity & theme
-      HOSPITAL_THEME:          "colombo"
-      HOSPITAL_NAME:           "Colombo National Hospital"
-      HOSPITAL_SHORT_CODE:     "CNH"
-      FACILITY_ID:             "HOSP-COLOMBO-001"
-      FACILITY_NAME:           "Colombo National Hospital"
-      MODALITY_INSTITUTION:    "Colombo National Hospital"
-      MODALITY_STATION:        "RIS-CNH-01"
-      # UI quick-links shown in links-bar (public IPs)
-      REFERRAL_OHIF_URL:       "http://${INSTANCE_A_IP}:3001"
-      REFERRAL_ORTHANC_UI_URL: "http://${INSTANCE_A_IP}:8042/ui/app/"
-      NATIONAL_RL_URL:         "http://${INSTANCE_C_IP}:8082"
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8080/actuator/health"]
-      interval: 15s
-      timeout: 5s
-      retries: 10
-      start_period: 30s
-
-  # ── Hospital A Orthanc Poller ────────────────────────────────────────────────
-  # Watches orthanc-a, registers every new study into national-rl on Instance C
-  orthanc-poller-a:
-    image: eclipse-temurin:17-jre-alpine
-    container_name: orthanc-poller-a
-    restart: unless-stopped
-    depends_on:
-      orthanc-a:
-        condition: service_healthy
-    ports:
       - "8081:8081"
     volumes:
-      - ./orthanc-poller.jar:/app/orthanc-poller.jar:ro
-    command: ["java", "-jar", "/app/orthanc-poller.jar"]
+      - ./hospital-ris.jar:/app/hospital-ris.jar:ro
+      - /opt/ris/sample-images:/opt/ris/sample-images:ro
+    command: ["java", "-jar", "/app/hospital-ris.jar"]
     environment:
-      SERVER_PORT:         "8081"
-      # Orthanc — Docker internal name OK (same instance)
-      ORTHANC_URL:         "http://orthanc-a:8042"
-      # national-rl v2 — ALWAYS public IP (Instance C), FHIR federation endpoint
-      # orthanc-poller pushes via PointerForwarder: POST /pointer-events on national-rl
-      NATIONAL_RL_URL:     "http://${INSTANCE_C_IP}:8082"
-      POLL_INTERVAL_MS:    "15000"
-      FACILITY_ID:         "HOSP-COLOMBO-001"
-      FACILITY_HIN:        "urn:oid:2.16.840.1.113883.3.DHP|HOSP-COLOMBO-001"
-      FACILITY_NAME:       "Colombo National Hospital"
-      # Public base stored as contentUrl in FHIR DocumentReference — browser must reach this
-      ORTHANC_PUBLIC_BASE: "http://${INSTANCE_A_IP}:8042"
+      PORT:                    "8081"
+      ORTHANC_REST_URL:        "http://orthanc-a:8042"
+      ORTHANC_DICOM_PORT:      "4242"
+      ORTHANC_AE_TITLE:        "ORTHANC-A"
+      ORTHANC_DICOM_WEB_BASE:  "http://orthanc-a:8042/dicom-web"
+      ORTHANC_PUBLIC_BASE:     "https://dcma.duckdns.org/orthanc"
+      RECORD_LOCATOR_URL:      "http://${INSTANCE_C_IP}:8082"
+      NATIONAL_RL_URL:         "http://${INSTANCE_C_IP}:8082"
+      REFERRAL_API_URL:        "http://${INSTANCE_C_IP}:8085"
+      # Hospital identity — Homagama Hospital
+      HOSPITAL_THEME:          "homagama"
+      HOSPITAL_NAME:           "Homagama Hospital"
+      HOSPITAL_SHORT_CODE:     "HMG"
+      FACILITY_ID:             "29751"
+      FACILITY_NAME:           "Homagama Hospital"
+      MODALITY_INSTITUTION:    "Homagama Hospital"
+      MODALITY_STATION:        "RIS-HMG-01"
+      # Sample X-ray images folder (JPEG → DICOM conversion)
+      SAMPLE_IMAGES_PATH:      "/opt/ris/sample-images"
+      # External RIS notification
+      RIS_ENABLED:             "true"
+      RIS_URL:                 "https://nova-qa-ris.external.dxdyhosting.xyz/api/v1/ris/ImagingStudy"
+      RIS_FACILITY_ID:         "29751"
+      OHIF_VIEWER_BASE_URL:    "https://dcma.duckdns.org/ohif/viewer"
+      # UI quick-links
+      REFERRAL_OHIF_URL:       "https://dcma.duckdns.org/ohif/viewer"
+      REFERRAL_ORTHANC_UI_URL: "https://dcma.duckdns.org/orthanc/ui/app/"
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8081/actuator/health"]
       interval: 15s
@@ -146,35 +97,32 @@ services:
       retries: 10
       start_period: 30s
 
-  # ── DICOMweb Proxy A ─────────────────────────────────────────────────────────
-  # OHIF points here for QIDO (study list) and WADO (pixel data).
-  # Proxy queries national-rl for QIDO and routes WADO to the correct Orthanc.
-  dicomweb-proxy-a:
+  # ── Hospital A Orthanc Poller ────────────────────────────────────────────────
+  orthanc-poller-a:
     image: eclipse-temurin:17-jre-alpine
-    container_name: dicomweb-proxy-a
+    container_name: orthanc-poller-a
     restart: unless-stopped
-    ports:
-      - "8090:8090"
+    depends_on:
+      orthanc-a:
+        condition: service_healthy
     volumes:
-      - ./dicomweb-proxy.jar:/app/dicomweb-proxy.jar:ro
-    command: ["java", "-jar", "/app/dicomweb-proxy.jar"]
+      - ./orthanc-poller.jar:/app/orthanc-poller.jar:ro
+    command: ["java", "-jar", "/app/orthanc-poller.jar"]
     environment:
-      SERVER_PORT:      "8090"
-      # national-rl v2 — public IP (Instance C), FHIR ITI-67 endpoint
-      # dicomweb-proxy calls GET /fhir/r4/DocumentReference?patient=Patient/{phn}&status=current
-      NATIONAL_RL_URL:  "http://${INSTANCE_C_IP}:8082"
-      FACILITY_ID:      "HOSP-COLOMBO-001"
-      ORTHANC_URL:      "http://orthanc-a:8042"  # for QIDO instance count enrichment
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8090/actuator/health"]
-      interval: 15s
-      timeout: 5s
-      retries: 10
-      start_period: 30s
+      SERVER_PORT:         "8083"
+      ORTHANC_URL:         "http://orthanc-a:8042"
+      NATIONAL_RL_URL:     "http://${INSTANCE_C_IP}:8082"
+      POLL_INTERVAL_MS:    "15000"
+      FACILITY_HIN:        "29751"
+      FACILITY_NAME:       "Homagama Hospital"
+      ORTHANC_PUBLIC_BASE: "https://dcma.duckdns.org/orthanc"
+      # External RIS notification
+      RIS_ENABLED:         "true"
+      RIS_URL:             "https://nova-qa-ris.external.dxdyhosting.xyz/api/v1/ris/ImagingStudy"
+      RIS_FACILITY_ID:     "29751"
+      OHIF_VIEWER_BASE_URL: "https://dcma.duckdns.org/ohif/viewer"
 
   # ── OHIF Viewer A ────────────────────────────────────────────────────────────
-  # IMPORTANT: ohif-a.js must use the PUBLIC IP of this instance for proxy URLs.
-  # The browser fetches WADO directly — Docker hostnames and localhost do NOT work.
   ohif-a:
     image: ohif/app:v3.9.0
     container_name: ohif-a
@@ -184,7 +132,7 @@ services:
     volumes:
       - ./ohif-a.js:/usr/share/nginx/html/app-config.js:ro
     depends_on:
-      - dicomweb-proxy-a
+      - orthanc-a
 
 volumes:
   orthanc-a-data:
