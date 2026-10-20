@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title th:text="${hospitalName} + ' RIS'">Hospital RIS</title>
+  <link rel="stylesheet"
+        href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.3/css/bootstrap.min.css"/>
+  <link rel="stylesheet"
+        href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.11.3/font/bootstrap-icons.min.css"/>
+  <style>
+    body { background: #f0f4f8; }
+
+    .ris-navbar {
+      background: linear-gradient(135deg, #1a3a5c 0%, #2563a8 100%);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    }
+    .ris-navbar .navbar-brand {
+      font-weight: 700;
+      font-size: 1.2rem;
+      letter-spacing: 0.5px;
+    }
+    .ris-navbar .badge-facility {
+      background: rgba(255,255,255,0.15);
+      font-size: 0.7rem;
+      padding: 3px 8px;
+      border-radius: 12px;
+    }
+
+    .nav-tabs .nav-link {
+      color: #495057;
+      font-weight: 500;
+      border: none;
+      border-bottom: 3px solid transparent;
+      padding: 0.75rem 1.5rem;
+    }
+    .nav-tabs .nav-link.active {
+      color: #2563a8;
+      border-bottom: 3px solid #2563a8;
+      background: none;
+    }
+    .nav-tabs { border-bottom: 1px solid #dee2e6; }
+
+    .card-ris {
+      border: none;
+      border-radius: 12px;
+      box-shadow: 0 1px 8px rgba(0,0,0,0.08);
+    }
+
+    .table th {
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #6c757d;
+      background: #f8f9fa;
+      border-bottom: 2px solid #dee2e6;
+    }
+    .table td { vertical-align: middle; font-size: 0.92rem; }
+
+    .badge-modality {
+      font-size: 0.75rem;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-weight: 600;
+    }
+    .badge-CR, .badge-DX { background: #e3f2fd; color: #1565c0; }
+    .badge-MR           { background: #f3e5f5; color: #6a1b9a; }
+    .badge-CT           { background: #e8f5e9; color: #2e7d32; }
+    .badge-US           { background: #fff3e0; color: #e65100; }
+    .badge-MG           { background: #fce4ec; color: #880e4f; }
+
+    .badge-local  { background: #d1fae5; color: #065f46; font-size: 0.72rem; padding: 3px 10px; border-radius: 20px; font-weight: 600; }
+    .badge-remote { background: #dbeafe; color: #1e40af; font-size: 0.72rem; padding: 3px 10px; border-radius: 20px; font-weight: 600; }
+
+    .btn-perform {
+      background: #2563a8; color: #fff; border: none;
+      font-size: 0.82rem; padding: 5px 14px; border-radius: 6px;
+    }
+    .btn-perform:hover { background: #1a3a5c; color: #fff; }
+    .btn-perform:disabled { background: #adb5bd; }
+
+    .status-complete { color: #198754; font-weight: 600; font-size: 0.88rem; }
+
+    .search-bar { max-width: 400px; }
+
+    .empty-state {
+      text-align: center; padding: 60px 20px; color: #adb5bd;
+    }
+    .empty-state i { font-size: 3rem; display: block; margin-bottom: 12px; }
+
+    .spinner-border-sm { width: 1rem; height: 1rem; }
+  </style>
+</head>
+<body>
+
+<!-- Navbar -->
+<nav class="navbar ris-navbar px-4 py-2">
+  <div class="d-flex align-items-center gap-3">
+    <span class="text-white fs-5">🏥</span>
+    <span class="navbar-brand text-white mb-0" th:text="${hospitalName}">Hospital RIS</span>
+    <span class="badge-facility text-white" th:text="'ID: ' + ${@environment.getProperty('hospital.facility-id')}"></span>
+  </div>
+  <div class="text-white-50 small" id="clock"></div>
+</nav>
+
+<div class="container-fluid px-4 py-3">
+
+  <!-- Tabs -->
+  <ul class="nav nav-tabs mb-3 bg-white rounded-top px-3 pt-2"
+      style="box-shadow: 0 1px 4px rgba(0,0,0,0.06);">
+    <li class="nav-item">
+      <a class="nav-link" th:classappend="${activeTab == 'worklist'} ? 'active'"
+         href="/worklist">
+        <i class="bi bi-list-task me-1"></i> Worklist
+      </a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link" th:classappend="${activeTab == 'records'} ? 'active'"
+         href="/records">
+        <i class="bi bi-search me-1"></i> Record Locator
+      </a>
+    </li>
+  </ul>
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <!-- TAB 1: WORKLIST                                        -->
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <div th:if="${activeTab == 'worklist'}">
+    <div class="card card-ris">
+      <div class="card-body p-0">
+        <div class="d-flex justify-content-between align-items-center px-4 py-3 border-bottom">
+          <div>
+            <h6 class="mb-0 fw-bold">Today's Worklist</h6>
+            <small class="text-muted" th:text="'Scheduled studies — ' + ${#dates.format(#dates.createNow(), 'dd MMM yyyy')}"></small>
+          </div>
+          <button class="btn btn-sm btn-outline-secondary" onclick="location.reload()">
+            <i class="bi bi-arrow-clockwise me-1"></i> Refresh
+          </button>
+        </div>
+
+        <!-- Empty state -->
+        <div class="empty-state" th:if="${#lists.isEmpty(items)}">
+          <i class="bi bi-inbox"></i>
+          No scheduled studies for today
+          <div class="small mt-2">Check that dcm4chee MWL is configured and studies are scheduled</div>
+        </div>
+
+        <!-- Worklist table -->
+        <div th:if="${!#lists.isEmpty(items)}" class="table-responsive">
+          <table class="table table-hover mb-0">
+            <thead>
+              <tr>
+                <th class="px-4">Patient Name</th>
+                <th>PHN</th>
+                <th>Modality</th>
+                <th>Scheduled</th>
+                <th>Procedure</th>
+                <th class="text-end px-4">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr th:each="item : ${items}" th:id="'row-' + ${item.accessionNumber}">
+                <td class="px-4 fw-semibold" th:text="${item.patientName}"></td>
+                <td class="font-monospace text-muted small" th:text="${item.phn}"></td>
+                <td>
+                  <span class="badge-modality"
+                        th:classappend="'badge-' + ${item.modality}"
+                        th:text="${item.modality}"></span>
+                </td>
+                <td th:text="${item.studyDate} + ' ' + ${item.scheduledTime}"></td>
+                <td class="text-muted small" th:text="${item.procedureDescription}"></td>
+                <td class="text-end px-4">
+                  <!-- Completed state -->
+                  <span th:if="${studyService.isCompleted(item.accessionNumber)}"
+                        class="status-complete">
+                    <i class="bi bi-check-circle-fill me-1"></i> Study Complete
+                  </span>
+                  <!-- Perform button -->
+                  <button th:unless="${studyService.isCompleted(item.accessionNumber)}"
+                          class="btn-perform"
+                          th:attr="onclick='performStudy(' + '&quot;' + ${item.accessionNumber} + '&quot;,' +
+                                           '&quot;' + ${item.phn} + '&quot;,' +
+                                           '&quot;' + ${item.patientName} + '&quot;,' +
+                                           '&quot;' + ${item.modality} + '&quot;)'">
+                    <i class="bi bi-activity me-1"></i> Perform Study
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <!-- TAB 2: RECORD LOCATOR                                  -->
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <div th:if="${activeTab == 'records'}">
+    <div class="card card-ris">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <div>
+            <h6 class="mb-0 fw-bold">Record Locator</h6>
+            <small class="text-muted">Search imaging records by Patient Health Number</small>
+          </div>
+        </div>
+
+        <!-- Search form -->
+        <form method="get" action="/records" class="d-flex gap-2 search-bar mb-4">
+          <div class="input-group">
+            <span class="input-group-text bg-white border-end-0">
+              <i class="bi bi-person-badge text-muted"></i>
+            </span>
+            <input type="text" name="phn" class="form-control border-start-0"
+                   placeholder="Enter PHN (10 digits)"
+                   th:value="${searchPhn}"
+                   maxlength="10" pattern="\d{10}"/>
+          </div>
+          <button type="submit" class="btn btn-primary px-4">
+            <i class="bi bi-search me-1"></i> Search
+          </button>
+        </form>
+
+        <!-- No search yet -->
+        <div class="empty-state" th:if="${searchPhn == null or searchPhn.isBlank()}">
+          <i class="bi bi-search"></i>
+          Enter a PHN to search records
+        </div>
+
+        <!-- No results -->
+        <div class="empty-state"
+             th:if="${searchPhn != null and !searchPhn.isBlank() and (records == null or #lists.isEmpty(records))}">
+          <i class="bi bi-inbox"></i>
+          No records found for PHN <strong th:text="${searchPhn}"></strong>
+        </div>
+
+        <!-- Results table -->
+        <div th:if="${records != null and !#lists.isEmpty(records)}" class="table-responsive">
+          <div class="text-muted small mb-2"
+               th:text="${#lists.size(records)} + ' record(s) found for PHN ' + ${searchPhn}"></div>
+          <table class="table table-hover mb-0">
+            <thead>
+              <tr>
+                <th>Modality</th>
+                <th>Study Date</th>
+                <th>Facility</th>
+                <th>Source</th>
+                <th>Study UID</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr th:each="rec : ${records}">
+                <td>
+                  <span class="badge-modality"
+                        th:classappend="'badge-' + ${rec.modality}"
+                        th:text="${rec.modality}"></span>
+                </td>
+                <td th:text="${rec.studyDate}"></td>
+                <td th:text="${rec.facilityName}"></td>
+                <td>
+                  <span th:if="${rec.local}"  class="badge-local">
+                    <i class="bi bi-building-fill me-1"></i> LOCAL
+                  </span>
+                  <span th:unless="${rec.local}" class="badge-remote">
+                    <i class="bi bi-globe me-1"></i> REMOTE
+                  </span>
+                </td>
+                <td class="font-monospace text-muted" style="font-size:0.75rem"
+                    th:text="${rec.studyUid}"></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+</div><!-- /container -->
+
+<!-- Toast notification -->
+<div class="position-fixed bottom-0 end-0 p-3" style="z-index: 9999">
+  <div id="toast" class="toast align-items-center border-0" role="alert">
+    <div class="d-flex">
+      <div class="toast-body" id="toastMsg"></div>
+      <button type="button" class="btn-close me-2 m-auto" data-bs-dismiss="toast"></button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.3/js/bootstrap.bundle.min.js"></script>
+<script>
+  // Clock
+  function tick() {
+    const now = new Date();
+    document.getElementById('clock').textContent =
+      now.toLocaleDateString('en-GB', {day:'2-digit',month:'short',year:'numeric'}) + '  ' +
+      now.toLocaleTimeString('en-GB');
+  }
+  tick(); setInterval(tick, 1000);
+
+  // Perform Study — AJAX
+  function performStudy(accessionNumber, phn, patientName, modality) {
+    const btn = event.target;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Processing...';
+
+    const params = new URLSearchParams({accessionNumber, phn, patientName, modality});
+
+    fetch('/perform-study', {method: 'POST', body: params})
+      .then(r => r.json())
+      .then(data => {
+        if (data.success) {
+          // Replace button with "Study Complete"
+          const cell = btn.closest('td');
+          cell.innerHTML = '<span class="status-complete"><i class="bi bi-check-circle-fill me-1"></i> Study Complete</span>';
+          showToast('Study performed successfully', 'success');
+        } else {
+          btn.disabled = false;
+          btn.innerHTML = '<i class="bi bi-activity me-1"></i> Perform Study';
+          showToast('Failed: ' + data.message, 'danger');
+        }
+      })
+      .catch(e => {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-activity me-1"></i> Perform Study';
+        showToast('Error: ' + e.message, 'danger');
+      });
+  }
+
+  function showToast(message, type) {
+    const toast = document.getElementById('toast');
+    const msg = document.getElementById('toastMsg');
+    toast.className = 'toast align-items-center border-0 text-bg-' + type;
+    msg.textContent = message;
+    new bootstrap.Toast(toast, {delay: 4000}).show();
+  }
+</script>
+</body>
+</html>

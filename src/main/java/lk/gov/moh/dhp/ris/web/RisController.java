@@ -1,0 +1,104 @@
+package lk.gov.moh.dhp.ris.web;
+
+import lk.gov.moh.dhp.ris.records.RecordItem;
+import lk.gov.moh.dhp.ris.records.RecordsService;
+import lk.gov.moh.dhp.ris.study.StudyService;
+import lk.gov.moh.dhp.ris.worklist.WorklistItem;
+import lk.gov.moh.dhp.ris.worklist.WorklistService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.ResponseEntity;
+import org.springframework.stereotype.Controller;
+import org.springframework.ui.Model;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+import java.util.Map;
+
+@Controller
+public class RisController {
+
+    private static final Logger log = LoggerFactory.getLogger(RisController.class);
+
+    @Value("${hospital.name}")
+    private String hospitalName;
+
+    @Value("${hospital.short-code}")
+    private String hospitalShortCode;
+
+    @Value("${hospital.facility-id}")
+    private String facilityId;
+
+    private final WorklistService worklistService;
+    private final StudyService studyService;
+    private final RecordsService recordsService;
+
+    public RisController(WorklistService worklistService,
+                         StudyService studyService,
+                         RecordsService recordsService) {
+        this.worklistService = worklistService;
+        this.studyService = studyService;
+        this.recordsService = recordsService;
+    }
+
+    /** Home → redirect to worklist tab */
+    @GetMapping("/")
+    public String home() {
+        return "redirect:/worklist";
+    }
+
+    /** Tab 1: Worklist */
+    @GetMapping("/worklist")
+    public String worklist(Model model) {
+        List<WorklistItem> items = worklistService.fetchTodayWorklist();
+        model.addAttribute("hospitalName", hospitalName);
+        model.addAttribute("hospitalShortCode", hospitalShortCode);
+        model.addAttribute("activeTab", "worklist");
+        model.addAttribute("items", items);
+        // Annotate each item with completed status
+        model.addAttribute("studyService", studyService);
+        return "index";
+    }
+
+    /** POST: Perform study — AJAX call from worklist row */
+    @PostMapping("/perform-study")
+    @ResponseBody
+    public ResponseEntity<Map<String, Object>> performStudy(
+            @RequestParam String accessionNumber,
+            @RequestParam String phn,
+            @RequestParam String patientName,
+            @RequestParam String modality) {
+
+        try {
+            String studyUid = studyService.performStudy(accessionNumber, phn, patientName, modality);
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "studyUid", studyUid,
+                    "message", "Study performed successfully"
+            ));
+        } catch (Exception e) {
+            log.error("perform study failed: {}", e.getMessage(), e);
+            return ResponseEntity.internalServerError().body(Map.of(
+                    "success", false,
+                    "message", "Failed: " + e.getMessage()
+            ));
+        }
+    }
+
+    /** Tab 2: Records — search by PHN */
+    @GetMapping("/records")
+    public String records(@RequestParam(required = false) String phn, Model model) {
+        model.addAttribute("hospitalName", hospitalName);
+        model.addAttribute("hospitalShortCode", hospitalShortCode);
+        model.addAttribute("activeTab", "records");
+        model.addAttribute("searchPhn", phn);
+
+        if (phn != null && !phn.isBlank()) {
+            List<RecordItem> records = recordsService.searchByPhn(phn.trim());
+            model.addAttribute("records", records);
+        }
+
+        return "index";
+    }
+}

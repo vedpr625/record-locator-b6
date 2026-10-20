@@ -1,0 +1,31 @@
+server:
+  port: ${PORT:8081}
+
+spring:
+  thymeleaf:
+    cache: false
+
+hospital:
+  name: ${HOSPITAL_NAME:Homagama Hospital}
+  short-code: ${HOSPITAL_SHORT_CODE:HMG}
+  facility-id: ${FACILITY_ID:29751}
+
+# dcm4chee MWL C-FIND
+dcm4chee:
+  host: ${DCM4CHEE_HOST:localhost}
+  port: ${DCM4CHEE_PORT:11112}
+  ae-title: ${DCM4CHEE_AE_TITLE:DCM4CHEE}
+  calling-ae: ${CALLING_AE:HOSPITAL-RIS}
+
+# Orthanc REST
+orthanc:
+  url: ${ORTHANC_REST_URL:http://localhost:8042}
+
+# National RL
+national-rl:
+  url: ${NATIONAL_RL_URL:http://localhost:8082}
+
+# Sample X-ray images on server
+sample:
+  images:
+    path: ${SAMPLE_IMAGES_PATH:/opt/ris/sample-images}
