@@ -1,79 +1,138 @@
 package lk.gov.moh.dhp.ris.study;
 
+import org.dcm4che3.data.Attributes;
+import org.dcm4che3.data.Sequence;
+import org.dcm4che3.data.Tag;
+import org.dcm4che3.data.UID;
+import org.dcm4che3.data.VR;
+import org.dcm4che3.net.ApplicationEntity;
+import org.dcm4che3.net.Association;
+import org.dcm4che3.net.Connection;
+import org.dcm4che3.net.Device;
+import org.dcm4che3.net.DimseRSPHandler;
+import org.dcm4che3.net.pdu.AAssociateRQ;
+import org.dcm4che3.net.pdu.PresentationContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
-import org.springframework.web.reactive.function.client.WebClient;
-import org.springframework.web.reactive.function.client.WebClientResponseException;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 /**
- * Notifies dcm4chee that a Modality Performed Procedure Step (MPPS) is COMPLETED.
+ * Sends DICOM MPPS N-CREATE (IN PROGRESS) + N-SET (COMPLETED) to dcm4chee
+ * via the DICOM network (not REST — dcm4chee 5.x has no REST MPPS write endpoint).
  *
- * Flow:
- *   1. POST /aets/DCM4CHEE/dimse/mppsscu  → N-CREATE  (status=IN PROGRESS)
- *   2. POST /aets/DCM4CHEE/dimse/mppsscu  → N-SET     (status=COMPLETED)
- *
- * dcm4chee then marks the matching SPS as COMPLETED, so it disappears
+ * dcm4chee then marks the matching SPS as COMPLETED so it disappears
  * from the worklist on the next C-FIND query.
  *
- * If dcm4chee is unreachable the failure is logged but does NOT abort the study —
- * the DICOM is already in Orthanc and the study is recorded as completed.
+ * Non-fatal: failure is logged but does NOT abort the study.
  */
 @Service
 public class MppsService {
 
     private static final Logger log = LoggerFactory.getLogger(MppsService.class);
 
-    @Value("${dcm4chee.rest-url}")
-    private String dcm4cheeRestUrl;
+    @Value("${dcm4chee.host}")
+    private String dcm4cheeHost;
+
+    @Value("${dcm4chee.port}")
+    private int dcm4cheePort;
+
+    @Value("${dcm4chee.ae-title}")
+    private String remoteAeTitle;
+
+    @Value("${dcm4chee.calling-ae}")
+    private String callingAeTitle;
 
     @Value("${hospital.name}")
     private String hospitalName;
 
-    private final WebClient webClient;
-
-    public MppsService(WebClient.Builder builder) {
-        this.webClient = builder.build();
-    }
-
-    /**
-     * Mark the SPS for the given accessionNumber as COMPLETED in dcm4chee.
-     * Uses the dcm4chee MPPS REST proxy endpoint.
-     *
-     * @param accessionNumber  the study accession number from the worklist
-     * @param studyInstanceUid the freshly created StudyInstanceUID
-     * @param patientId        PHN
-     * @param patientName      patient name
-     * @param modality         CR / CT / MR / …
-     */
     public void markCompleted(String accessionNumber, String studyInstanceUid,
                               String patientId, String patientName, String modality) {
         try {
             String mppsUid = org.dcm4che3.util.UIDUtils.createUID();
-            String now     = LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE);
-            String nowTime = LocalTime.now().format(DateTimeFormatter.ofPattern("HHmmss"));
+            String date    = LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE);
+            String time    = LocalTime.now().format(DateTimeFormatter.ofPattern("HHmmss"));
 
-            // ── N-CREATE: IN PROGRESS ──────────────────────────────────
-            Map<String, Object> nCreate = buildMppsNCreate(
-                    mppsUid, accessionNumber, studyInstanceUid,
-                    patientId, patientName, modality, now, nowTime);
+            ExecutorService executor = Executors.newCachedThreadPool();
+            ScheduledExecutorService scheduledExecutor = Executors.newSingleThreadScheduledExecutor();
 
-            postMpps(mppsUid, nCreate, "N-CREATE");
+            Device device = new Device(callingAeTitle + "-MPPS");
+            device.setExecutor(executor);
+            device.setScheduledExecutor(scheduledExecutor);
 
-            // ── N-SET: COMPLETED ───────────────────────────────────────
-            Map<String, Object> nSet = buildMppsNSet(mppsUid, now, nowTime);
-            postMpps(mppsUid, nSet, "N-SET");
+            Connection conn = new Connection();
+            device.addConnection(conn);
 
-            log.info("MPPS completed: acc={} mppsUid={}", accessionNumber, mppsUid);
+            ApplicationEntity ae = new ApplicationEntity(callingAeTitle);
+            ae.setAssociationInitiator(true);
+            ae.addConnection(conn);
+            device.addApplicationEntity(ae);
+
+            Association as = null;
+            try {
+                Connection remote = new Connection();
+                remote.setHostname(dcm4cheeHost);
+                remote.setPort(dcm4cheePort);
+
+                AAssociateRQ rq = new AAssociateRQ();
+                rq.setCalledAET(remoteAeTitle);
+                rq.setCallingAET(callingAeTitle);
+                rq.addPresentationContext(new PresentationContext(1,
+                        UID.ModalityPerformedProcedureStep,
+                        UID.ImplicitVRLittleEndian,
+                        UID.ExplicitVRLittleEndian));
+
+                as = ae.connect(remote, rq);
+
+                // ── N-CREATE: IN PROGRESS ──────────────────────────────
+                Attributes nCreateAttrs = buildNCreate(mppsUid, accessionNumber,
+                        studyInstanceUid, patientId, patientName, modality, date, time);
+
+                CountDownLatch latch1 = new CountDownLatch(1);
+                as.ncreate(UID.ModalityPerformedProcedureStep, mppsUid, nCreateAttrs,
+                        UID.ImplicitVRLittleEndian,
+                        new DimseRSPHandler(as.nextMessageID()) {
+                            @Override
+                            public void onDimseRSP(Association a, Attributes cmd, Attributes data) {
+                                int status = cmd.getInt(Tag.Status, -1);
+                                log.debug("MPPS N-CREATE response status=0x{}", Integer.toHexString(status));
+                                latch1.countDown();
+                            }
+                        });
+                latch1.await(10, TimeUnit.SECONDS);
+
+                // ── N-SET: COMPLETED ───────────────────────────────────
+                Attributes nSetAttrs = buildNSet(date, time);
+
+                CountDownLatch latch2 = new CountDownLatch(1);
+                as.nset(UID.ModalityPerformedProcedureStep, mppsUid, nSetAttrs,
+                        UID.ImplicitVRLittleEndian,
+                        new DimseRSPHandler(as.nextMessageID()) {
+                            @Override
+                            public void onDimseRSP(Association a, Attributes cmd, Attributes data) {
+                                int status = cmd.getInt(Tag.Status, -1);
+                                log.debug("MPPS N-SET response status=0x{}", Integer.toHexString(status));
+                                latch2.countDown();
+                            }
+                        });
+                latch2.await(10, TimeUnit.SECONDS);
+
+                log.info("MPPS COMPLETED sent via DICOM: acc={} mppsUid={}", accessionNumber, mppsUid);
+
+            } finally {
+                if (as != null) try { as.release(); } catch (Exception ignore) {}
+                executor.shutdown();
+                scheduledExecutor.shutdown();
+            }
 
         } catch (Exception e) {
             log.warn("MPPS update failed for acc={} — worklist item will remain (non-fatal): {}",
@@ -81,91 +140,54 @@ public class MppsService {
         }
     }
 
-    // ── REST POST ──────────────────────────────────────────────────────────────
+    private Attributes buildNCreate(String mppsUid, String accessionNumber,
+                                     String studyInstanceUid, String patientId,
+                                     String patientName, String modality,
+                                     String date, String time) {
+        Attributes attrs = new Attributes();
 
-    private void postMpps(String mppsUid, Map<String, Object> body, String step) {
-        // dcm4chee MPPS endpoint: POST /aets/DCM4CHEE/dimse/mppsscu/{mppsUid}
-        String url = dcm4cheeRestUrl + "/aets/DCM4CHEE/dimse/mppsscu/" + mppsUid;
-        webClient.post()
-                .uri(url)
-                .contentType(MediaType.APPLICATION_JSON)
-                .bodyValue(body)
-                .retrieve()
-                .bodyToMono(String.class)
-                .block();
-        log.debug("MPPS {} sent to {}", step, url);
-    }
+        // Patient
+        attrs.setString(Tag.PatientID,   VR.LO, patientId);
+        attrs.setString(Tag.PatientName, VR.PN, patientName);
 
-    // ── DICOM MPPS dataset builders (JSON encoding per DICOMweb STOW-RS) ──────
+        // MPPS status
+        attrs.setString(Tag.PerformedProcedureStepStatus,    VR.CS, "IN PROGRESS");
+        attrs.setString(Tag.PerformedProcedureStepStartDate, VR.DA, date);
+        attrs.setString(Tag.PerformedProcedureStepStartTime, VR.TM, time);
+        attrs.setString(Tag.PerformedProcedureStepID,        VR.SH, accessionNumber);
+        attrs.setString(Tag.PerformedStationAETitle,         VR.AE, callingAeTitle);
+        attrs.setString(Tag.PerformedStationName,            VR.SH, "HOSPITAL-RIS");
+        attrs.setString(Tag.Modality,                        VR.CS, modality);
 
-    private Map<String, Object> buildMppsNCreate(
-            String mppsUid, String accessionNumber, String studyInstanceUid,
-            String patientId, String patientName, String modality,
-            String date, String time) {
+        // Study reference
+        attrs.setString(Tag.StudyInstanceUID, VR.UI, studyInstanceUid);
 
-        Map<String, Object> ds = new LinkedHashMap<>();
+        // Performed Series Sequence
+        Sequence seriesSeq = attrs.newSequence(Tag.PerformedSeriesSequence, 1);
+        Attributes series = new Attributes();
+        series.setString(Tag.SeriesInstanceUID,       VR.UI, org.dcm4che3.util.UIDUtils.createUID());
+        series.setString(Tag.PerformingPhysicianName, VR.PN, "");
+        series.newSequence(Tag.ReferencedImageSequence, 0);
+        seriesSeq.add(series);
 
-        // SOP Instance UID
-        ds.put("00080018", tag("UI", mppsUid));
-        // Patient ID
-        ds.put("00100020", tag("LO", patientId));
-        // Patient Name
-        ds.put("00100010", tag("PN", patientName));
-        // Modality
-        ds.put("00080060", tag("CS", modality));
-        // Performed Procedure Step Status — IN PROGRESS
-        ds.put("00400252", tag("CS", "IN PROGRESS"));
-        // Performed Procedure Step Start Date
-        ds.put("00400244", tag("DA", date));
-        // Performed Procedure Step Start Time
-        ds.put("00400245", tag("TM", time));
-        // Performed Procedure Step ID
-        ds.put("00400253", tag("SH", accessionNumber));
-        // Performed Station Name
-        ds.put("00400242", tag("SH", "HOSPITAL-RIS"));
-        // Performed Station AE Title
-        ds.put("00400241", tag("AE", "HOSPITAL-RIS"));
-        // Study Instance UID
-        ds.put("0020000D", tag("UI", studyInstanceUid));
-        // Performed Series Sequence (one series)
-        Map<String, Object> series = new LinkedHashMap<>();
-        series.put("0020000E", tag("UI", org.dcm4che3.util.UIDUtils.createUID())); // SeriesInstanceUID
-        series.put("00400254", tag("LO", "Performed Procedure"));
-        ds.put("00400340", seq(series)); // Performed Series Sequence
-        // Referenced Study Sequence
-        Map<String, Object> refStudy = new LinkedHashMap<>();
-        refStudy.put("00081150", tag("UI", "1.2.840.10008.3.1.2.3.1")); // SOP Class = Detached Study Mgmt
-        refStudy.put("00081155", tag("UI", studyInstanceUid));
-        ds.put("00081110", seq(refStudy));
         // Scheduled Step Attributes Sequence
-        Map<String, Object> ssas = new LinkedHashMap<>();
-        ssas.put("00400009", tag("SH", accessionNumber)); // Scheduled Procedure Step ID
-        ssas.put("00400007", tag("LO", modality + " Study")); // Scheduled Procedure Step Description
-        ssas.put("00080050", tag("SH", accessionNumber)); // Accession Number
-        ssas.put("0020000D", tag("UI", studyInstanceUid)); // Study Instance UID
-        ds.put("00400270", seq(ssas));
+        Sequence ssas = attrs.newSequence(Tag.ScheduledStepAttributesSequence, 1);
+        Attributes ssa = new Attributes();
+        ssa.setString(Tag.StudyInstanceUID,              VR.UI, studyInstanceUid);
+        ssa.setString(Tag.AccessionNumber,               VR.SH, accessionNumber);
+        ssa.setString(Tag.RequestedProcedureID,          VR.SH, accessionNumber);
+        ssa.setString(Tag.ScheduledProcedureStepID,      VR.SH, accessionNumber);
+        ssa.setString(Tag.ScheduledProcedureStepDescription, VR.LO, modality + " Study");
+        ssas.add(ssa);
 
-        return ds;
+        return attrs;
     }
 
-    private Map<String, Object> buildMppsNSet(String mppsUid, String date, String time) {
-        Map<String, Object> ds = new LinkedHashMap<>();
-        ds.put("00080018", tag("UI", mppsUid));
-        // Status → COMPLETED
-        ds.put("00400252", tag("CS", "COMPLETED"));
-        // End date/time
-        ds.put("00400250", tag("DA", date));
-        ds.put("00400251", tag("TM", time));
-        return ds;
-    }
-
-    // ── DICOMweb JSON helpers ──────────────────────────────────────────────────
-
-    private Map<String, Object> tag(String vr, String value) {
-        return Map.of("vr", vr, "Value", List.of(value));
-    }
-
-    private Map<String, Object> seq(Map<String, Object> item) {
-        return Map.of("vr", "SQ", "Value", List.of(item));
+    private Attributes buildNSet(String date, String time) {
+        Attributes attrs = new Attributes();
+        attrs.setString(Tag.PerformedProcedureStepStatus,  VR.CS, "COMPLETED");
+        attrs.setString(Tag.PerformedProcedureStepEndDate, VR.DA, date);
+        attrs.setString(Tag.PerformedProcedureStepEndTime, VR.TM, time);
+        return attrs;
     }
 }
