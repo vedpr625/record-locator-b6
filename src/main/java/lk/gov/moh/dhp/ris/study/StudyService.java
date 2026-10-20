@@ -41,13 +41,15 @@ public class StudyService {
     private String hospitalName;
 
     private final WebClient webClient;
+    private final MppsService mppsService;
     private final Random random = new Random();
 
     // accessionNumber → studyInstanceUID (in-memory, demo only)
     private final Map<String, String> completedStudies = new ConcurrentHashMap<>();
 
-    public StudyService(WebClient.Builder webClientBuilder) {
+    public StudyService(WebClient.Builder webClientBuilder, MppsService mppsService) {
         this.webClient = webClientBuilder.build();
+        this.mppsService = mppsService;
     }
 
     public boolean isCompleted(String accessionNumber) {
@@ -82,6 +84,9 @@ public class StudyService {
         // 5. Remember as completed
         completedStudies.put(accessionNumber, studyUid);
         log.info("study performed: acc={} phn={} modality={} uid={}", accessionNumber, phn, modality, studyUid);
+
+        // 6. Mark MWL item COMPLETED in dcm4chee (non-fatal — study already in Orthanc)
+        mppsService.markCompleted(accessionNumber, studyUid, phn, patientName, modality);
 
         return studyUid;
     }
