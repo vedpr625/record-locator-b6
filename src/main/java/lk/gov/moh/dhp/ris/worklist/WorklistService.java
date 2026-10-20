@@ -100,19 +100,22 @@ public class WorklistService {
 
             // Build MWL query keys
             Attributes keys = new Attributes();
-            keys.setString(Tag.SpecificCharacterSet, VR.CS, "ISO_IR 192");
-            keys.setString(Tag.AccessionNumber, VR.SH, "");
-            keys.setString(Tag.PatientID, VR.LO, "");
-            keys.setString(Tag.PatientName, VR.PN, "");
+            keys.setString(Tag.SpecificCharacterSet,    VR.CS, "ISO_IR 192");
+            keys.setString(Tag.AccessionNumber,         VR.SH, "");
+            keys.setString(Tag.PatientID,               VR.LO, "");
+            keys.setString(Tag.PatientName,             VR.PN, "");
+            keys.setString(Tag.StudyInstanceUID,        VR.UI, "");
+            keys.setString(Tag.RequestedProcedureID,    VR.SH, "");
 
             // Scheduled Procedure Step Sequence
             Sequence spsSeq = keys.newSequence(Tag.ScheduledProcedureStepSequence, 1);
             Attributes spsItem = new Attributes();
-            spsItem.setString(Tag.Modality, VR.CS, "");
-            spsItem.setString(Tag.ScheduledProcedureStepStartDate, VR.DA, todayDicom());
-            spsItem.setString(Tag.ScheduledProcedureStepStartTime, VR.TM, "");
+            spsItem.setString(Tag.Modality,                          VR.CS, "");
+            spsItem.setString(Tag.ScheduledProcedureStepStartDate,   VR.DA, todayDicom());
+            spsItem.setString(Tag.ScheduledProcedureStepStartTime,   VR.TM, "");
             spsItem.setString(Tag.ScheduledProcedureStepDescription, VR.LO, "");
-            spsItem.setString(Tag.ScheduledProcedureStepStatus, VR.CS, "SCHEDULED");
+            spsItem.setString(Tag.ScheduledProcedureStepID,          VR.SH, "");
+            spsItem.setString(Tag.ScheduledProcedureStepStatus,      VR.CS, "SCHEDULED");
             spsSeq.add(spsItem);
 
             // Issue C-FIND
@@ -151,20 +154,24 @@ public class WorklistService {
 
     private WorklistItem toWorklistItem(Attributes attrs) {
         try {
-            String accession = attrs.getString(Tag.AccessionNumber, "");
-            String patientId = attrs.getString(Tag.PatientID, "");
+            String accession   = attrs.getString(Tag.AccessionNumber, "");
+            String patientId   = attrs.getString(Tag.PatientID, "");
             String patientName = attrs.getString(Tag.PatientName, "").replace("^", " ").trim();
+            String studyUid    = attrs.getString(Tag.StudyInstanceUID, "");
+            String reqProcId   = attrs.getString(Tag.RequestedProcedureID, "");
 
             Attributes sps = attrs.getNestedDataset(Tag.ScheduledProcedureStepSequence);
-            String modality = "";
-            String date = "";
-            String time = "";
+            String modality   = "";
+            String date       = "";
+            String time       = "";
             String description = "";
+            String spsId      = "";
             if (sps != null) {
-                modality = sps.getString(Tag.Modality, "");
-                date = sps.getString(Tag.ScheduledProcedureStepStartDate, "");
-                time = sps.getString(Tag.ScheduledProcedureStepStartTime, "");
+                modality    = sps.getString(Tag.Modality, "");
+                date        = sps.getString(Tag.ScheduledProcedureStepStartDate, "");
+                time        = sps.getString(Tag.ScheduledProcedureStepStartTime, "");
                 description = sps.getString(Tag.ScheduledProcedureStepDescription, "");
+                spsId       = sps.getString(Tag.ScheduledProcedureStepID, "");
             }
 
             if (patientId.isBlank()) return null;
@@ -177,6 +184,9 @@ public class WorklistService {
                     .studyDate(formatDate(date))
                     .scheduledTime(formatTime(time))
                     .procedureDescription(description)
+                    .requestedProcedureId(reqProcId)
+                    .scheduledProcedureStepId(spsId)
+                    .studyInstanceUid(studyUid)
                     .build();
         } catch (Exception e) {
             log.warn("skipping malformed MWL entry: {}", e.getMessage());

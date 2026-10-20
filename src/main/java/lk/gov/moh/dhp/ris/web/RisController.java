@@ -13,6 +13,7 @@ import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -52,11 +53,18 @@ public class RisController {
     @GetMapping("/worklist")
     public String worklist(Model model) {
         List<WorklistItem> items = worklistService.fetchTodayWorklist();
+
+        // Group by PHN (preserving order of first appearance)
+        Map<String, List<WorklistItem>> patientGroups = new LinkedHashMap<>();
+        for (WorklistItem item : items) {
+            patientGroups.computeIfAbsent(item.getPhn(), k -> new java.util.ArrayList<>()).add(item);
+        }
+
         model.addAttribute("hospitalName", hospitalName);
         model.addAttribute("hospitalShortCode", hospitalShortCode);
         model.addAttribute("activeTab", "worklist");
         model.addAttribute("items", items);
-        // Annotate each item with completed status
+        model.addAttribute("patientGroups", patientGroups.entrySet());
         model.addAttribute("studyService", studyService);
         return "index";
     }
@@ -68,14 +76,18 @@ public class RisController {
         List<WorklistItem> items = worklistService.fetchTodayWorklist();
         List<Map<String, Object>> result = items.stream().map(item -> {
             Map<String, Object> m = new java.util.LinkedHashMap<>();
-            m.put("accessionNumber",       item.getAccessionNumber());
-            m.put("patientName",           item.getPatientName());
-            m.put("phn",                   item.getPhn());
-            m.put("modality",              item.getModality());
-            m.put("studyDate",             item.getStudyDate());
-            m.put("scheduledTime",         item.getScheduledTime());
-            m.put("procedureDescription",  item.getProcedureDescription());
-            m.put("completed",             studyService.isCompleted(item.getAccessionNumber()));
+            m.put("accessionNumber",          item.getAccessionNumber());
+            m.put("patientName",              item.getPatientName());
+            m.put("phn",                      item.getPhn());
+            m.put("modality",                 item.getModality());
+            m.put("studyDate",                item.getStudyDate());
+            m.put("scheduledTime",            item.getScheduledTime());
+            m.put("procedureDescription",     item.getProcedureDescription());
+            m.put("requestedProcedureId",     item.getRequestedProcedureId());
+            m.put("scheduledProcedureStepId", item.getScheduledProcedureStepId());
+            m.put("studyInstanceUid",         item.getStudyInstanceUid());
+            m.put("completed",                studyService.isCompleted(item.getAccessionNumber()));
+            m.put("studyUid",                 studyService.getStudyUid(item.getAccessionNumber()));
             return m;
         }).toList();
         return ResponseEntity.ok(result);
