@@ -133,9 +133,13 @@
             <h6 class="mb-0 fw-bold">Today's Worklist</h6>
             <small class="text-muted" th:text="'Scheduled studies — ' + ${#dates.format(#dates.createNow(), 'dd MMM yyyy')}"></small>
           </div>
-          <button class="btn btn-sm btn-outline-secondary" onclick="location.reload()">
-            <i class="bi bi-arrow-clockwise me-1"></i> Refresh
-          </button>
+          <div class="d-flex align-items-center gap-2">
+            <small class="text-muted" id="lastRefresh"></small>
+            <span id="pollSpinner" class="spinner-border spinner-border-sm text-secondary d-none"></span>
+            <button class="btn btn-sm btn-outline-secondary" onclick="pollWorklist()">
+              <i class="bi bi-arrow-clockwise me-1"></i> Refresh
+            </button>
+          </div>
         </div>
 
         <!-- Empty state -->
@@ -158,7 +162,7 @@
                 <th class="text-end px-4">Action</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody id="worklistTbody">
               <tr th:each="item : ${items}" th:id="'row-' + ${item.accessionNumber}">
                 <td class="px-4 fw-semibold" th:text="${item.patientName}"></td>
                 <td class="font-monospace text-muted small" th:text="${item.phn}"></td>
@@ -327,6 +331,70 @@
         btn.innerHTML = '<i class="bi bi-activity me-1"></i> Perform Study';
         showToast('Error: ' + e.message, 'danger');
       });
+  }
+
+  // ── Worklist auto-poll every 30 seconds ──────────────────────
+  const POLL_INTERVAL = 30000;
+  const MODALITY_CLASSES = {CR:'badge-CR',DX:'badge-DX',MR:'badge-MR',CT:'badge-CT',US:'badge-US',MG:'badge-MG'};
+
+  function pollWorklist() {
+    const tbody = document.getElementById('worklistTbody');
+    if (!tbody) return; // not on worklist tab
+    const spinner = document.getElementById('pollSpinner');
+    if (spinner) spinner.classList.remove('d-none');
+
+    fetch('/worklist/poll')
+      .then(r => r.json())
+      .then(items => {
+        if (spinner) spinner.classList.add('d-none');
+        // Update last-refresh label
+        const lr = document.getElementById('lastRefresh');
+        if (lr) lr.textContent = 'Updated ' + new Date().toLocaleTimeString('en-GB');
+
+        if (items.length === 0) {
+          // Show empty state only if table is currently empty
+          if (tbody.querySelectorAll('tr').length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-5">No scheduled studies for today</td></tr>';
+          }
+          return;
+        }
+
+        items.forEach(item => {
+          const rowId = 'row-' + item.accessionNumber;
+          let row = document.getElementById(rowId);
+          const modCls = MODALITY_CLASSES[item.modality] || 'badge-CR';
+          const actionCell = item.completed
+            ? '<span class="status-complete"><i class="bi bi-check-circle-fill me-1"></i> Study Complete</span>'
+            : `<button class="btn-perform" onclick="performStudy('${item.accessionNumber}','${item.phn}','${item.patientName}','${item.modality}')"><i class="bi bi-activity me-1"></i> Perform Study</button>`;
+
+          if (!row) {
+            // New row — insert it
+            row = document.createElement('tr');
+            row.id = rowId;
+            tbody.appendChild(row);
+          }
+          // Only update action cell if not already processing (spinner showing)
+          const existingBtn = row.querySelector('.btn-perform:not(:disabled)');
+          const isProcessing = row.querySelector('.spinner-border');
+          row.innerHTML = `
+            <td class="px-4 fw-semibold">${item.patientName}</td>
+            <td class="font-monospace text-muted small">${item.phn}</td>
+            <td><span class="badge-modality ${modCls}">${item.modality}</span></td>
+            <td>${item.studyDate} ${item.scheduledTime}</td>
+            <td class="text-muted small">${item.procedureDescription || ''}</td>
+            <td class="text-end px-4">${isProcessing ? row.querySelector('td:last-child').innerHTML : actionCell}</td>`;
+        });
+      })
+      .catch(() => {
+        if (spinner) spinner.classList.add('d-none');
+      });
+  }
+
+  // Start polling only on worklist tab
+  if (document.getElementById('worklistTbody')) {
+    const lr = document.getElementById('lastRefresh');
+    if (lr) lr.textContent = 'Updated ' + new Date().toLocaleTimeString('en-GB');
+    setInterval(pollWorklist, POLL_INTERVAL);
   }
 
   function showToast(message, type) {

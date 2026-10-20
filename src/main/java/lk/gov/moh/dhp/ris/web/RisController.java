@@ -61,6 +61,26 @@ public class RisController {
         return "index";
     }
 
+    /** AJAX: return worklist rows as JSON for auto-poll refresh */
+    @GetMapping("/worklist/poll")
+    @ResponseBody
+    public ResponseEntity<List<Map<String, Object>>> worklistPoll() {
+        List<WorklistItem> items = worklistService.fetchTodayWorklist();
+        List<Map<String, Object>> result = items.stream().map(item -> {
+            Map<String, Object> m = new java.util.LinkedHashMap<>();
+            m.put("accessionNumber",       item.getAccessionNumber());
+            m.put("patientName",           item.getPatientName());
+            m.put("phn",                   item.getPhn());
+            m.put("modality",              item.getModality());
+            m.put("studyDate",             item.getStudyDate());
+            m.put("scheduledTime",         item.getScheduledTime());
+            m.put("procedureDescription",  item.getProcedureDescription());
+            m.put("completed",             studyService.isCompleted(item.getAccessionNumber()));
+            return m;
+        }).toList();
+        return ResponseEntity.ok(result);
+    }
+
     /** POST: Perform study — AJAX call from worklist row */
     @PostMapping("/perform-study")
     @ResponseBody
