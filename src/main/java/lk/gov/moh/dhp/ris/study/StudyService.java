@@ -34,6 +34,12 @@ public class StudyService {
     @Value("${orthanc.url}")
     private String orthancUrl;
 
+    @Value("${dcm4chee.rest-url}")
+    private String dcm4cheeRestUrl;
+
+    @Value("${dcm4chee.ae-title}")
+    private String dcm4cheeAeTitle;
+
     @Value("${hospital.facility-id}")
     private String facilityId;
 
@@ -85,8 +91,12 @@ public class StudyService {
         completedStudies.put(accessionNumber, studyUid);
         log.info("study performed: acc={} phn={} modality={} uid={}", accessionNumber, phn, modality, studyUid);
 
-        // 6. Mark MWL item COMPLETED in dcm4chee (non-fatal — study already in Orthanc)
+        // 6. Mark MWL item COMPLETED in dcm4chee via MPPS (non-fatal)
         mppsService.markCompleted(accessionNumber, studyUid, phn, patientName, modality);
+
+        // 7. Delete MWL item via REST so it disappears from worklist immediately
+        //    (dcmUpdateMWLStatus not available in this schema version)
+        deleteMwlItem(accessionNumber);
 
         return studyUid;
     }
@@ -180,6 +190,70 @@ public class StudyService {
         dos.close();
 
         return baos.toByteArray();
+    }
+
+    /**
+     * Delete the MWL item from dcm4chee via REST after study is performed.
+     * dcm4chee REST: DELETE /aets/{ae}/rs/mwlitems/{studyUID}/{spsID}
+     * We use accession number as the SPS ID (matches how we create MWL items).
+     * Non-fatal — logs warning if it fails.
+     */
+    private void deleteMwlItem(String accessionNumber) {
+        try {
+            // First find the MWL item to get the study UID and SPS ID
+            String searchUrl = dcm4cheeRestUrl + "/aets/" + dcm4cheeAeTitle
+                    + "/rs/mwlitems?accno=" + accessionNumber + "&fuzzymatching=false";
+            String response = webClient.get()
+                    .uri(searchUrl)
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .block();
+
+            if (response == null || response.equals("[]") || response.isBlank()) {
+                log.debug("MWL item not found for acc={} (may already be gone)", accessionNumber);
+                return;
+            }
+
+            // Parse study UID and SPS ID from response
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            com.fasterxml.jackson.databind.JsonNode arr = mapper.readTree(response);
+            if (!arr.isArray() || arr.size() == 0) return;
+
+            com.fasterxml.jackson.databind.JsonNode item = arr.get(0);
+            String studyUidForMwl = getTagValue(item, "0020000D"); // StudyInstanceUID
+            com.fasterxml.jackson.databind.JsonNode spsSeq = item.path("00400100").path("Value");
+            String spsId = accessionNumber; // fallback
+            if (spsSeq.isArray() && spsSeq.size() > 0) {
+                String fromSeq = getTagValue(spsSeq.get(0), "00400009");
+                if (fromSeq != null && !fromSeq.isEmpty()) spsId = fromSeq;
+            }
+
+            if (studyUidForMwl == null || studyUidForMwl.isEmpty()) {
+                log.warn("Cannot delete MWL item for acc={}: no StudyInstanceUID in response", accessionNumber);
+                return;
+            }
+
+            String deleteUrl = dcm4cheeRestUrl + "/aets/" + dcm4cheeAeTitle
+                    + "/rs/mwlitems/" + studyUidForMwl + "/" + spsId;
+            webClient.delete()
+                    .uri(deleteUrl)
+                    .retrieve()
+                    .toBodilessEntity()
+                    .block();
+
+            log.info("MWL item deleted via REST: acc={} studyUid={} spsId={}", accessionNumber, studyUidForMwl, spsId);
+
+        } catch (Exception e) {
+            log.warn("MWL item deletion failed for acc={} (non-fatal): {}", accessionNumber, e.getMessage());
+        }
+    }
+
+    private String getTagValue(com.fasterxml.jackson.databind.JsonNode node, String tag) {
+        try {
+            com.fasterxml.jackson.databind.JsonNode val = node.path(tag).path("Value");
+            if (val.isArray() && val.size() > 0) return val.get(0).asText();
+        } catch (Exception ignore) {}
+        return null;
     }
 
     private void pushToOrthanc(byte[] dicomBytes) {
