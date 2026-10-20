@@ -201,8 +201,9 @@ public class StudyService {
     private void deleteMwlItem(String accessionNumber) {
         try {
             // First find the MWL item to get the study UID and SPS ID
+            // dcm4chee MWL search: filter by AccessionNumber DICOM tag (00080050)
             String searchUrl = dcm4cheeRestUrl + "/aets/" + dcm4cheeAeTitle
-                    + "/rs/mwlitems?accno=" + accessionNumber + "&fuzzymatching=false";
+                    + "/rs/mwlitems?00080050=" + accessionNumber + "&fuzzymatching=false";
             String response = webClient.get()
                     .uri(searchUrl)
                     .retrieve()
