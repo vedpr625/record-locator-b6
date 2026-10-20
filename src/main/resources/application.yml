@@ -14,7 +14,7 @@ hospital:
 dcm4chee:
   host: ${DCM4CHEE_HOST:localhost}
   port: ${DCM4CHEE_PORT:11112}
-  ae-title: ${DCM4CHEE_AE_TITLE:DCM4CHEE}
+  ae-title: ${DCM4CHEE_AE_TITLE:WORKLIST}
   calling-ae: ${CALLING_AE:HOSPITAL-RIS}
 
 # Orthanc REST
