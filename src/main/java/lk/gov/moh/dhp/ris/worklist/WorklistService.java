@@ -6,10 +6,13 @@ import org.dcm4che3.data.Tag;
 import org.dcm4che3.data.UID;
 import org.dcm4che3.data.VR;
 import org.dcm4che3.net.ApplicationEntity;
+import org.dcm4che3.net.Association;
 import org.dcm4che3.net.Connection;
 import org.dcm4che3.net.Device;
+import org.dcm4che3.net.DimseRSPHandler;
 import org.dcm4che3.net.Priority;
-import org.dcm4che3.net.service.BasicCFindSCU;
+import org.dcm4che3.net.pdu.AAssociateRQ;
+import org.dcm4che3.net.pdu.PresentationContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -17,9 +20,11 @@ import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Fetches today's Modality Worklist from dcm4chee via DICOM C-FIND.
@@ -57,7 +62,7 @@ public class WorklistService {
     }
 
     private List<WorklistItem> queryMwl() throws Exception {
-        ExecutorService executor = Executors.newSingleThreadExecutor();
+        ExecutorService executor = Executors.newCachedThreadPool();
         ScheduledExecutorService scheduledExecutor = Executors.newSingleThreadScheduledExecutor();
 
         Device device = new Device(callingAeTitle);
@@ -73,17 +78,32 @@ public class WorklistService {
         device.addApplicationEntity(ae);
 
         List<WorklistItem> items = new ArrayList<>();
+        Association as = null;
 
         try {
-            BasicCFindSCU cfind = new BasicCFindSCU();
+            // Remote connection
+            Connection remote = new Connection();
+            remote.setHostname(host);
+            remote.setPort(port);
 
-            // Build MWL query keys — today's date
+            // Build association request
+            AAssociateRQ rq = new AAssociateRQ();
+            rq.setCalledAET(remoteAeTitle);
+            rq.setCallingAET(callingAeTitle);
+            // Presentation context for MWL C-FIND
+            rq.addPresentationContext(new PresentationContext(1,
+                    UID.ModalityWorklistInformationModelFind,
+                    UID.ImplicitVRLittleEndian,
+                    UID.ExplicitVRLittleEndian));
+
+            as = ae.connect(remote, rq);
+
+            // Build MWL query keys
             Attributes keys = new Attributes();
             keys.setString(Tag.SpecificCharacterSet, VR.CS, "ISO_IR 192");
             keys.setString(Tag.AccessionNumber, VR.SH, "");
             keys.setString(Tag.PatientID, VR.LO, "");
             keys.setString(Tag.PatientName, VR.PN, "");
-            keys.setString(Tag.Modality, VR.CS, "");
 
             // Scheduled Procedure Step Sequence
             Sequence spsSeq = keys.newSequence(Tag.ScheduledProcedureStepSequence, 1);
@@ -95,28 +115,38 @@ public class WorklistService {
             spsItem.setString(Tag.ScheduledProcedureStepStatus, VR.CS, "SCHEDULED");
             spsSeq.add(spsItem);
 
-            cfind.query(ae, Priority.NORMAL,
-                    makeConnection(), remoteAeTitle,
-                    UID.ModalityWorklistInformationModelFind,
-                    keys,
-                    result -> {
-                        WorklistItem item = toWorklistItem(result);
-                        if (item != null) items.add(item);
+            // Issue C-FIND
+            CountDownLatch done = new CountDownLatch(1);
+            as.cfind(UID.ModalityWorklistInformationModelFind, Priority.NORMAL, keys,
+                    UID.ImplicitVRLittleEndian,
+                    new DimseRSPHandler(as.nextMessageID()) {
+                        @Override
+                        public void onDimseRSP(Association association, Attributes cmd, Attributes data) {
+                            int status = cmd.getInt(Tag.Status, -1);
+                            if (status == 0xFF00 || status == 0xFF01) {
+                                // Pending — got a result
+                                if (data != null) {
+                                    WorklistItem item = toWorklistItem(data);
+                                    if (item != null) items.add(item);
+                                }
+                            } else {
+                                // Final response (0x0000 = success, others = error/cancel)
+                                done.countDown();
+                            }
+                        }
                     });
 
+            done.await(30, TimeUnit.SECONDS);
+
         } finally {
+            if (as != null) {
+                try { as.release(); } catch (Exception ignore) {}
+            }
             executor.shutdown();
             scheduledExecutor.shutdown();
         }
 
         return items;
-    }
-
-    private Connection makeConnection() {
-        Connection conn = new Connection();
-        conn.setHostname(host);
-        conn.setPort(port);
-        return conn;
     }
 
     private WorklistItem toWorklistItem(Attributes attrs) {

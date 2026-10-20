@@ -145,12 +145,12 @@ public class StudyService {
         attrs.setString(org.dcm4che3.data.Tag.SOPClassUID,    org.dcm4che3.data.VR.UI,
                 sopClassForModality(modality));
         attrs.setString(org.dcm4che3.data.Tag.TransferSyntaxUID, org.dcm4che3.data.VR.UI,
-                org.dcm4che3.data.UID.JPEGBaseline1);
+                org.dcm4che3.data.UID.JPEGBaseline8Bit);
         attrs.setInt(org.dcm4che3.data.Tag.InstanceNumber, org.dcm4che3.data.VR.IS, 1);
 
         // Image pixel data — wrap JPEG as encapsulated pixel data
         org.dcm4che3.data.Attributes fmi = attrs.createFileMetaInformation(
-                org.dcm4che3.data.UID.JPEGBaseline1);
+                org.dcm4che3.data.UID.JPEGBaseline8Bit);
 
         // Read JPEG dimensions for image attributes
         java.awt.image.BufferedImage img = javax.imageio.ImageIO.read(
@@ -175,7 +175,7 @@ public class StudyService {
         // Serialize to byte array
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         org.dcm4che3.io.DicomOutputStream dos = new org.dcm4che3.io.DicomOutputStream(baos,
-                org.dcm4che3.data.UID.JPEGBaseline1);
+                org.dcm4che3.data.UID.JPEGBaseline8Bit);
         dos.writeDataset(fmi, attrs);
         dos.close();
 
