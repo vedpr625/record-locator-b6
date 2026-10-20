@@ -7,7 +7,7 @@ import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 
-import java.time.LocalDateTime;
+import java.time.ZonedDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 
@@ -26,7 +26,7 @@ public class HhmisService {
     private static final Logger log = LoggerFactory.getLogger(HhmisService.class);
 
     private static final DateTimeFormatter FHIR_DT =
-            DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ssxxx");
+            DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ssXXX");
 
     @Value("${hhmis.rest-url}")
     private String hhmisRestUrl;
@@ -74,7 +74,7 @@ public class HhmisService {
 
     private String buildFhirBody(String studyUid, String accessionNumber,
                                   String phn, String modality) {
-        String now = LocalDateTime.now(ZoneId.of("Asia/Colombo"))
+        String now = ZonedDateTime.now(ZoneId.of("Asia/Colombo"))
                 .format(FHIR_DT);
 
         // Viewer address (optional — empty string if not configured)
