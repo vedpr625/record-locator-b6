@@ -18,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestTemplate;
 
 import jakarta.annotation.PostConstruct;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Pattern;
 
@@ -66,6 +67,8 @@ public class OrthancPoller {
     private final PointerRepository pointerRepository;
     private final OrthancCursorRepository cursorRepository;
     private final ApplicationContext applicationContext;
+    /** Optional — only present when rl.ris.enabled=true. */
+    private final Optional<RisNotificationService> risNotificationService;
 
     // In-memory hot copy of the cursor — loaded from DB on startup.
     private final AtomicLong since = new AtomicLong(0);
@@ -73,13 +76,15 @@ public class OrthancPoller {
     public OrthancPoller(RestTemplate restTemplate, ObjectMapper objectMapper,
                          PointerFactory pointerFactory, PointerRepository pointerRepository,
                          OrthancCursorRepository cursorRepository,
-                         ApplicationContext applicationContext) {
+                         ApplicationContext applicationContext,
+                         Optional<RisNotificationService> risNotificationService) {
         this.restTemplate = restTemplate;
         this.objectMapper = objectMapper;
         this.pointerFactory = pointerFactory;
         this.pointerRepository = pointerRepository;
         this.cursorRepository = cursorRepository;
         this.applicationContext = applicationContext;
+        this.risNotificationService = risNotificationService;
     }
 
     /** Load the persisted cursor on startup so we resume rather than replay. */
@@ -160,6 +165,13 @@ public class OrthancPoller {
         // DICOM PatientName uses ^ as component separator: "Perera^Kasun^M"
         String patientName      = patientTags.path("PatientName").asText("").trim();
         String modalities       = mainTags.path("ModalitiesInStudy").asText("");
+        // Extra tags needed for external RIS FHIR notification
+        String accessionNumber  = mainTags.path("AccessionNumber").asText("").trim();
+        String studyDate        = mainTags.path("StudyDate").asText("").trim();
+        String studyTime        = mainTags.path("StudyTime").asText("").trim();
+        int numberOfSeries      = study.path("Series").size();
+        // Orthanc doesn't expose numberOfInstances directly at study level; sum from series
+        int numberOfInstances   = study.path("Series").size(); // approximate; poller can refine later
 
         if (studyInstanceUid.isBlank() || phn.isBlank()) {
             log.warn("study {} missing StudyInstanceUID or PatientID, skipping", orthancStudyId);
@@ -177,6 +189,8 @@ public class OrthancPoller {
 
         String wadoRsUrl = orthancBaseUrl + "/dicom-web/studies/" + studyInstanceUid;
 
+        boolean isNew = pointerRepository.findById(studyInstanceUid).isEmpty();
+
         pointerRepository.findById(studyInstanceUid).ifPresentOrElse(
                 existing -> updateIfUrlChanged(existing, wadoRsUrl),
                 () -> pointerFactory.create(new NewPointerRequest(
@@ -192,6 +206,19 @@ public class OrthancPoller {
                         orthancStudyId,
                         null,
                         false)));
+
+        // Notify external hospital RIS that study is available (new studies only).
+        // Non-fatal: pointer is already saved even if RIS notification fails.
+        if (isNew) {
+            risNotificationService.ifPresent(ris -> ris.notifyStudyAvailable(
+                    studyInstanceUid,
+                    accessionNumber,
+                    phn,
+                    studyDate,
+                    studyTime,
+                    numberOfSeries,
+                    numberOfInstances));
+        }
     }
 
     private void updateIfUrlChanged(Pointer pointer, String wadoRsUrl) {

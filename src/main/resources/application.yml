@@ -37,6 +37,25 @@ rl:
     # true = new pointers default to accessible (correct for Bundle-6 edge with
     # no Bundle-2a consent webhook). Set false when a consent webhook is active.
     default-accessible: ${RL_CONSENT_DEFAULT_ACCESSIBLE:true}
+  ris:
+    # External RIS notification after a study is processed.
+    # Set RIS_ENABLED=true and configure the URL + facility ID per hospital deployment.
+    #
+    # Hospital A — Homagama Hospital
+    #   RIS_ENABLED=true
+    #   RIS_URL=https://nova-qa-ris.external.dxdyhosting.xyz/api/v1/ris/ImagingStudy
+    #   RIS_FACILITY_ID=29751
+    #   OHIF_VIEWER_BASE_URL=https://dcma.duckdns.org/ohif/viewer
+    #
+    # Hospital B — NHSL
+    #   RIS_ENABLED=true
+    #   RIS_URL=https://nova-develop-ris.external.dxdyhosting.xyz/api/v1/ris/ImagingStudy
+    #   RIS_FACILITY_ID=org-dgh
+    #   OHIF_VIEWER_BASE_URL=https://dcmb.duckdns.org/ohif/viewer
+    enabled: ${RIS_ENABLED:false}
+    url: ${RIS_URL:}
+    facility-id: ${RIS_FACILITY_ID:}
+    ohif-viewer-base-url: ${OHIF_VIEWER_BASE_URL:}
   opensearch:
     # Set RL_OPENSEARCH_ENABLED=true to activate the OpenSearch name index.
     # When disabled (the default), patient-name searches return no results and
