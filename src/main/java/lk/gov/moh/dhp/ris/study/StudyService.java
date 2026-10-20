@@ -48,14 +48,17 @@ public class StudyService {
 
     private final WebClient webClient;
     private final MppsService mppsService;
+    private final HhmisService hhmisService;
     private final Random random = new Random();
 
     // accessionNumber → studyInstanceUID (in-memory, demo only)
     private final Map<String, String> completedStudies = new ConcurrentHashMap<>();
 
-    public StudyService(WebClient.Builder webClientBuilder, MppsService mppsService) {
+    public StudyService(WebClient.Builder webClientBuilder, MppsService mppsService,
+                        HhmisService hhmisService) {
         this.webClient = webClientBuilder.build();
         this.mppsService = mppsService;
+        this.hhmisService = hhmisService;
     }
 
     public boolean isCompleted(String accessionNumber) {
@@ -97,6 +100,9 @@ public class StudyService {
         // 7. Delete MWL item via REST so it disappears from worklist immediately
         //    (dcmUpdateMWLStatus not available in this schema version)
         deleteMwlItem(accessionNumber);
+
+        // 8. Notify HHMIS that study is available (non-fatal)
+        hhmisService.notifyStudyDone(studyUid, accessionNumber, phn, modality);
 
         return studyUid;
     }

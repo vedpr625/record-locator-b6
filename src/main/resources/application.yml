@@ -26,6 +26,11 @@ orthanc:
 national-rl:
   url: ${NATIONAL_RL_URL:http://localhost:8082}
 
+# HHMIS study-done notification
+hhmis:
+  rest-url: ${HHMIS_REST_URL:https://nova-qa-ris.external.dxdyhosting.xyz}
+  viewer-base-url: ${HHMIS_VIEWER_URL:}
+
 # Sample X-ray images on server
 sample:
   images:
