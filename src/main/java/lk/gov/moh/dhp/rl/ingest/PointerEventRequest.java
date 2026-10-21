@@ -25,7 +25,7 @@ public record PointerEventRequest(
         @NotBlank String id,
 
         /** Patient Health Number — national patient identifier from the Client Registry. */
-        @NotBlank @Pattern(regexp = "[A-Za-z0-9._-]{1,64}", message = "phn must be 1-64 characters: letters, digits, . _ -") String phn,
+        @NotBlank @Pattern(regexp = "[^\\p{Cntrl}]{1,255}", message = "phn must be 1-255 characters, no control characters") String phn,
 
         /** Display name (optional). Used only for OpenSearch patient-name indexing. */
         String patientName,
