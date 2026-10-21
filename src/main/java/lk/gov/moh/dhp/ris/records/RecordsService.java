@@ -41,8 +41,8 @@ public class RecordsService {
     public List<RecordItem> searchByPhn(String phn) {
         List<RecordItem> results = new ArrayList<>();
         try {
-            // FHIR DocumentReference search: GET /fhir/r4/DocumentReference?patient=Patient/{phn}
-            String url = nationalRlUrl + "/fhir/r4/DocumentReference?patient="
+            // FHIR DocumentReference search: GET /fhir/DocumentReference?patient=Patient/{phn} (RL FHIR base is /fhir)
+            String url = nationalRlUrl + "/fhir/DocumentReference?patient="
                     + java.net.URLEncoder.encode("Patient/" + phn, java.nio.charset.StandardCharsets.UTF_8)
                     + "&status=current";
 
@@ -79,12 +79,13 @@ public class RecordsService {
             String studyUid = resource.path("masterIdentifier").path("value").asText("");
             if (studyUid.startsWith("urn:oid:")) studyUid = studyUid.substring(8);
 
-            // Facility from custodian.identifier.value
-            String facilityHin = resource.path("custodian")
-                    .path("identifier").path("value").asText("");
-
-            // Facility name from custodian.display
-            String facilityName = resource.path("custodian").path("display").asText(facilityHin);
+            // Facility: the Record Locator writes it to context.facilityType.coding[0]
+            // (code = facility HIN, display = name); fall back to custodian for other servers.
+            JsonNode fac = resource.path("context").path("facilityType").path("coding").path(0);
+            String facilityHin = fac.path("code").asText(
+                    resource.path("custodian").path("identifier").path("value").asText(""));
+            String facilityName = fac.path("display").asText(
+                    resource.path("custodian").path("display").asText(facilityHin));
 
             // Modality / type from type.coding[0].code (LOINC)
             String loinc = resource.path("type").path("coding")
@@ -92,13 +93,14 @@ public class RecordsService {
             String modality = loincToModality(loinc);
 
             // Date from date field
-            String date = resource.path("date").asText("").substring(0, 10);
+            String dateRaw = resource.path("date").asText("");
+            String date = dateRaw.length() >= 10 ? dateRaw.substring(0, 10) : dateRaw;
 
             // Patient name from subject display if present
             String patientName = resource.path("subject").path("display").asText("");
 
             // LOCAL if facilityHin matches this hospital
-            boolean local = facilityHin.contains(myFacilityId) || myFacilityId.contains(facilityHin);
+            boolean local = !facilityHin.isBlank() && facilityHin.equals(myFacilityId);
 
             return RecordItem.builder()
                     .studyUid(studyUid)
