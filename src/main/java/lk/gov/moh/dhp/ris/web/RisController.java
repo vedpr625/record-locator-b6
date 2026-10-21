@@ -2,6 +2,7 @@ package lk.gov.moh.dhp.ris.web;
 
 import lk.gov.moh.dhp.ris.records.RecordItem;
 import lk.gov.moh.dhp.ris.records.RecordsService;
+import lk.gov.moh.dhp.ris.study.CompletedService;
 import lk.gov.moh.dhp.ris.study.StudyService;
 import lk.gov.moh.dhp.ris.worklist.WorklistItem;
 import lk.gov.moh.dhp.ris.worklist.WorklistService;
@@ -34,10 +35,13 @@ public class RisController {
     private final WorklistService worklistService;
     private final StudyService studyService;
     private final RecordsService recordsService;
+    private final CompletedService completedService;
 
     public RisController(WorklistService worklistService,
                          StudyService studyService,
-                         RecordsService recordsService) {
+                         RecordsService recordsService,
+                         CompletedService completedService) {
+        this.completedService = completedService;
         this.worklistService = worklistService;
         this.studyService = studyService;
         this.recordsService = recordsService;
@@ -128,19 +132,35 @@ public class RisController {
         }
     }
 
-    /** Tab 2: Records — search by PHN */
+    /** Tab 2: Completed studies (performed here; they leave the worklist but stay listed) */
+    @GetMapping("/completed")
+    public String completed(Model model) {
+        model.addAttribute("hospitalName", hospitalName);
+        model.addAttribute("hospitalShortCode", hospitalShortCode);
+        model.addAttribute("activeTab", "completed");
+        model.addAttribute("completed", completedService.list());
+        return "index";
+    }
+
+    /** Tab 3: Records - search the Record Locator by PHN (any format) or by patient name */
     @GetMapping("/records")
-    public String records(@RequestParam(required = false) String phn, Model model) {
+    public String records(@RequestParam(required = false) String q,
+                          @RequestParam(required = false) String phn,
+                          @RequestParam(defaultValue = "phn") String by,
+                          Model model) {
+        String term = (q != null && !q.isBlank()) ? q.trim() : (phn == null ? null : phn.trim());
+        boolean byName = "name".equals(by);
         model.addAttribute("hospitalName", hospitalName);
         model.addAttribute("hospitalShortCode", hospitalShortCode);
         model.addAttribute("activeTab", "records");
-        model.addAttribute("searchPhn", phn);
+        model.addAttribute("searchTerm", term);
+        model.addAttribute("searchBy", byName ? "name" : "phn");
 
-        if (phn != null && !phn.isBlank()) {
-            List<RecordItem> records = recordsService.searchByPhn(phn.trim());
+        if (term != null && !term.isBlank()) {
+            List<RecordItem> records = byName ? recordsService.searchByName(term)
+                                              : recordsService.searchByPhn(term);
             model.addAttribute("records", records);
         }
-
         return "index";
     }
 }

@@ -262,6 +262,9 @@
   <a th:href="@{/worklist}" th:classappend="${activeTab == 'worklist'} ? 'active'">
     <i class="bi bi-list-check"></i> Modality Worklist
   </a>
+  <a th:href="@{/completed}" th:classappend="${activeTab == 'completed'} ? 'active'">
+    <i class="bi bi-check2-circle"></i> Completed
+  </a>
   <a th:href="@{/records}" th:classappend="${activeTab == 'records'} ? 'active'">
     <i class="bi bi-search"></i> Record Locator
   </a>
@@ -411,16 +414,19 @@
         </div>
       </div>
 
-      <form method="get" action="/records" th:action="@{/records}" class="d-flex gap-2 mb-4" style="max-width:420px">
+      <form method="get" action="/records" th:action="@{/records}" class="d-flex gap-2 mb-4" style="max-width:760px">
+        <select name="by" class="form-select" style="max-width:130px;border-color:var(--border)">
+          <option value="phn" th:selected="${searchBy == 'phn'}">PHN</option>
+          <option value="name" th:selected="${searchBy == 'name'}">Name</option>
+        </select>
         <div class="input-group">
           <span class="input-group-text bg-white" style="border-color:var(--border)">
             <i class="bi bi-person-badge text-secondary"></i>
           </span>
-          <input type="text" name="phn" class="form-control"
+          <input type="text" name="q" class="form-control"
                  style="border-color:var(--border)"
-                 placeholder="Enter PHN (10 digits)"
-                 th:value="${searchPhn}"
-                 maxlength="10" pattern="\d{10}"/>
+                 placeholder="Enter PHN (any format) or patient name"
+                 th:value="${searchTerm}" maxlength="100" autocomplete="off"/>
         </div>
         <button type="submit" class="btn btn-primary px-4" style="background:var(--brand-mid);border-color:var(--brand-mid)">
           <i class="bi bi-search me-1"></i> Search
@@ -428,30 +434,31 @@
       </form>
 
       <!-- No search yet -->
-      <div class="empty-state" th:if="${searchPhn == null or searchPhn.isBlank()}">
+      <div class="empty-state" th:if="${searchTerm == null or searchTerm.isBlank()}">
         <div class="empty-icon"><i class="bi bi-search"></i></div>
-        <div class="empty-title">Enter a PHN to search records</div>
+        <div class="empty-title">Enter a PHN or patient name to search records</div>
         <div class="empty-hint">Results include studies from this facility and the national registry</div>
       </div>
 
       <!-- No results -->
       <div class="empty-state"
-           th:if="${searchPhn != null and !searchPhn.isBlank() and (records == null or #lists.isEmpty(records))}">
+           th:if="${searchTerm != null and !searchTerm.isBlank() and (records == null or #lists.isEmpty(records))}">
         <div class="empty-icon"><i class="bi bi-inbox"></i></div>
         <div class="empty-title">No records found</div>
-        <div class="empty-hint" th:text="'PHN ' + ${searchPhn} + ' has no imaging studies on record'"></div>
+        <div class="empty-hint" th:text="(${searchBy} == 'name' ? 'Name ' : 'PHN ') + ${searchTerm} + ' has no imaging studies on record'"></div>
       </div>
 
       <!-- Results -->
       <div th:if="${records != null and !#lists.isEmpty(records)}">
         <div class="mb-2 text-secondary" style="font-size:0.8rem"
-             th:text="${#lists.size(records)} + ' record(s) found for PHN ' + ${searchPhn}"></div>
+             th:text="${#lists.size(records)} + ' record(s) found for ' + (${searchBy} == 'name' ? 'name ' : 'PHN ') + ${searchTerm}"></div>
         <div class="results-table">
           <table class="table table-hover mb-0">
             <thead>
               <tr>
                 <th>Modality</th>
                 <th>Patient</th>
+                <th>PHN</th>
                 <th>Study Date</th>
                 <th>Facility</th>
                 <th>Source</th>
@@ -467,6 +474,7 @@
                         th:text="${rec.modality}"></span>
                 </td>
                 <td th:text="${#strings.isEmpty(rec.patientName)} ? '—' : ${rec.patientName}"></td>
+                <td th:text="${rec.phn}" style="font-family:monospace;font-size:0.82rem"></td>
                 <td th:text="${rec.studyDate}" style="font-weight:500"></td>
                 <td th:text="${rec.facilityName}"></td>
                 <td>
@@ -493,6 +501,43 @@
 
     </div>
   </div><!-- /records tab -->
+
+  <!-- ════════════════════════════════════════════════════════ -->
+  <!-- TAB — COMPLETED STUDIES                                 -->
+  <!-- ════════════════════════════════════════════════════════ -->
+  <div th:if="${activeTab == 'completed'}">
+    <div class="search-card">
+      <div class="section-header mb-3">
+        <div>
+          <div class="section-title">Completed Studies</div>
+          <div class="section-sub">Studies performed at this facility (newest first)</div>
+        </div>
+      </div>
+      <div class="empty-state" th:if="${#lists.isEmpty(completed)}">
+        <div class="empty-icon"><i class="bi bi-inbox"></i></div>
+        <div class="empty-title">No completed studies yet</div>
+      </div>
+      <div class="results-table" th:if="${!#lists.isEmpty(completed)}">
+        <table class="table table-hover mb-0">
+          <thead>
+            <tr><th>Patient</th><th>PHN</th><th>Accession</th><th>Modality</th><th>Study Date</th><th>Study UID</th><th>Images</th></tr>
+          </thead>
+          <tbody>
+            <tr th:each="c : ${completed}">
+              <td th:text="${#strings.isEmpty(c.patientName)} ? '—' : ${c.patientName}"></td>
+              <td th:text="${c.phn}" style="font-family:monospace;font-size:0.82rem"></td>
+              <td th:text="${c.accession}"></td>
+              <td th:text="${#strings.isEmpty(c.modality)} ? '—' : ${c.modality}"></td>
+              <td th:text="${c.studyDate}" style="font-weight:500"></td>
+              <td><span style="font-size:0.75rem;font-family:monospace;color:var(--text-muted)" th:text="${c.studyUid}"></span></td>
+              <td><a th:if="${!#strings.isEmpty(c.viewerUrl)}" th:href="${c.viewerUrl}" target="_blank"
+                     class="btn btn-sm btn-outline-primary"><i class="bi bi-eye me-1"></i>View</a></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div><!-- /completed tab -->
 
 </div><!-- /page-content -->
 

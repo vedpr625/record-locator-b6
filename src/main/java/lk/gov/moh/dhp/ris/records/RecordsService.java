@@ -43,42 +43,51 @@ public class RecordsService {
      * Returns empty list on error (demo-safe).
      */
     public List<RecordItem> searchByPhn(String phn) {
+        String url = nationalRlUrl + "/fhir/DocumentReference?patient="
+                + java.net.URLEncoder.encode("Patient/" + phn, java.nio.charset.StandardCharsets.UTF_8)
+                + "&status=current";
+        return search(url, "PHN " + phn, phn);
+    }
+
+    /**
+     * Search by patient name (Record Locator `_name`, backed by its OpenSearch name index;
+     * partial names such as "Kasu" match). Returns empty if the Record Locator has no name index.
+     */
+    public List<RecordItem> searchByName(String name) {
+        String url = nationalRlUrl + "/fhir/DocumentReference?_name="
+                + java.net.URLEncoder.encode(name, java.nio.charset.StandardCharsets.UTF_8)
+                + "&status=current";
+        return search(url, "name " + name, null);
+    }
+
+    private List<RecordItem> search(String url, String what, String knownPhn) {
         List<RecordItem> results = new ArrayList<>();
         try {
-            // FHIR DocumentReference search: GET /fhir/DocumentReference?patient=Patient/{phn} (RL FHIR base is /fhir)
-            String url = nationalRlUrl + "/fhir/DocumentReference?patient="
-                    + java.net.URLEncoder.encode("Patient/" + phn, java.nio.charset.StandardCharsets.UTF_8)
-                    + "&status=current";
-
             var req = webClient.get().uri(java.net.URI.create(url));
             if (bearerToken != null && !bearerToken.isBlank()) {
                 req = req.header("Authorization", "Bearer " + bearerToken);
             }
-            String body = req
-                    .retrieve()
-                    .bodyToMono(String.class)
-                    .block();
-
+            String body = req.retrieve().bodyToMono(String.class).block();
             if (body == null) return results;
 
             com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
             JsonNode bundle = mapper.readTree(body);
-            JsonNode entries = bundle.path("entry");
-
-            for (JsonNode entry : entries) {
-                JsonNode resource = entry.path("resource");
-                RecordItem item = toRecordItem(resource, phn);
+            for (JsonNode entry : bundle.path("entry")) {
+                RecordItem item = toRecordItem(entry.path("resource"), knownPhn);
                 if (item != null) results.add(item);
             }
-
         } catch (Exception e) {
-            log.warn("national-rl search failed for PHN {} (url={}): {}", phn, nationalRlUrl, e.getMessage());
+            log.warn("national-rl search failed for {} (url={}): {}", what, nationalRlUrl, e.getMessage());
         }
         return results;
     }
 
-    private RecordItem toRecordItem(JsonNode resource, String phn) {
+    private RecordItem toRecordItem(JsonNode resource, String knownPhn) {
         try {
+            String phn = knownPhn;
+            if (phn == null || phn.isBlank()) {
+                phn = resource.path("subject").path("reference").asText("").replaceFirst("^Patient/", "");
+            }
             // Study UID from masterIdentifier
             String studyUid = resource.path("masterIdentifier").path("value").asText("");
             if (studyUid.startsWith("urn:oid:")) studyUid = studyUid.substring(8);
