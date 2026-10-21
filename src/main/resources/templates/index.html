@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="ctx" th:content="@{/}" content="/"/>
   <title th:text="${hospitalName} + ' — RIS'">Hospital RIS</title>
   <link rel="stylesheet"
         href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.3/css/bootstrap.min.css"/>
@@ -410,7 +411,7 @@
         </div>
       </div>
 
-      <form method="get" action="/records" class="d-flex gap-2 mb-4" style="max-width:420px">
+      <form method="get" action="/records" th:action="@{/records}" class="d-flex gap-2 mb-4" style="max-width:420px">
         <div class="input-group">
           <span class="input-group-text bg-white" style="border-color:var(--border)">
             <i class="bi bi-person-badge text-secondary"></i>
@@ -500,6 +501,8 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.3/js/bootstrap.bundle.min.js"></script>
 <script>
+// Base path (works when served at / or under a context path such as /ris)
+const CTX = document.querySelector('meta[name="ctx"]').content;
 // ── Clock ───────────────────────────────────────────────────
 (function tick() {
   const el = document.getElementById('clock');
@@ -527,7 +530,7 @@ function performStudy(accessionNumber, phn, patientName, modality) {
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner-border spinner-sm"></span> Processing…';
 
-  fetch('/perform-study', {
+  fetch(CTX + 'perform-study', {
     method: 'POST',
     body: new URLSearchParams({accessionNumber, phn, patientName, modality})
   })
@@ -561,7 +564,7 @@ function pollWorklist() {
   const spinner = document.getElementById('pollSpinner');
   if (spinner) spinner.classList.remove('d-none');
 
-  fetch('/worklist/poll')
+  fetch(CTX + 'worklist/poll')
     .then(r => r.json())
     .then(items => {
       if (spinner) spinner.classList.add('d-none');

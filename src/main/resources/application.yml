@@ -1,5 +1,9 @@
 server:
   port: ${PORT:8081}
+  # Set CONTEXT_PATH=/ris to serve the app under a sub-path behind a reverse proxy
+  servlet:
+    context-path: ${CONTEXT_PATH:}
+  forward-headers-strategy: framework
 
 spring:
   thymeleaf:
