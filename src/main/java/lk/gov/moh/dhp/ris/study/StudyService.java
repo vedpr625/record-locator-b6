@@ -102,7 +102,9 @@ public class StudyService {
         deleteMwlItem(accessionNumber);
 
         // 8. Notify HHMIS that study is available (non-fatal)
-        hhmisService.notifyStudyDone(studyUid, accessionNumber, phn, modality);
+        int[] counts = queryOrthancCounts(studyUid);
+        hhmisService.notifyStudyDone(studyUid, accessionNumber, phn, modality,
+                counts[0], counts[1]);
 
         return studyUid;
     }
@@ -261,6 +263,66 @@ public class StudyService {
             if (val.isArray() && val.size() > 0) return val.get(0).asText();
         } catch (Exception ignore) {}
         return null;
+    }
+
+    /**
+     * Query Orthanc for the actual series and instance counts for a study.
+     * Orthanc REST: GET /studies?StudyInstanceUID=<uid>  → array of study IDs
+     *               GET /studies/<id>  → { Series: [...] }
+     *               GET /series/<id>   → { Instances: [...] }
+     * Returns [numberOfSeries, numberOfInstances], defaults to [1,1] on any error.
+     */
+    private int[] queryOrthancCounts(String studyInstanceUid) {
+        try {
+            // Find Orthanc internal study ID by StudyInstanceUID
+            String searchResp = webClient.get()
+                    .uri(orthancUrl + "/studies?StudyInstanceUID=" + studyInstanceUid)
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .block();
+
+            com.fasterxml.jackson.databind.ObjectMapper mapper =
+                    new com.fasterxml.jackson.databind.ObjectMapper();
+
+            // Response is array of internal Orthanc study IDs
+            com.fasterxml.jackson.databind.JsonNode ids = mapper.readTree(searchResp);
+            if (!ids.isArray() || ids.size() == 0) {
+                log.debug("Orthanc: study {} not found yet, using counts 1/1", studyInstanceUid);
+                return new int[]{1, 1};
+            }
+
+            String orthancStudyId = ids.get(0).asText();
+            String studyResp = webClient.get()
+                    .uri(orthancUrl + "/studies/" + orthancStudyId)
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .block();
+
+            com.fasterxml.jackson.databind.JsonNode study = mapper.readTree(studyResp);
+            com.fasterxml.jackson.databind.JsonNode seriesArr = study.path("Series");
+
+            int numSeries = seriesArr.isArray() ? seriesArr.size() : 1;
+            int numInstances = 0;
+
+            for (com.fasterxml.jackson.databind.JsonNode seriesId : seriesArr) {
+                String seriesResp = webClient.get()
+                        .uri(orthancUrl + "/series/" + seriesId.asText())
+                        .retrieve()
+                        .bodyToMono(String.class)
+                        .block();
+                com.fasterxml.jackson.databind.JsonNode series = mapper.readTree(seriesResp);
+                com.fasterxml.jackson.databind.JsonNode instanceArr = series.path("Instances");
+                if (instanceArr.isArray()) numInstances += instanceArr.size();
+            }
+
+            if (numInstances == 0) numInstances = 1;
+            log.debug("Orthanc counts for {}: series={} instances={}", studyInstanceUid, numSeries, numInstances);
+            return new int[]{numSeries, numInstances};
+
+        } catch (Exception e) {
+            log.warn("Could not query Orthanc counts for {} (non-fatal): {}", studyInstanceUid, e.getMessage());
+            return new int[]{1, 1};
+        }
     }
 
     private void pushToOrthanc(byte[] dicomBytes) {

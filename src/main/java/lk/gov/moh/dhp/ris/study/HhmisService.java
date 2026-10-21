@@ -50,11 +50,15 @@ public class HhmisService {
      * @param accessionNumber   local accession number
      * @param phn               patient PHN
      * @param modality          e.g. CR, CT, MR
+     * @param numberOfSeries    actual series count from PACS
+     * @param numberOfInstances actual instance count from PACS
      */
     public void notifyStudyDone(String studyInstanceUid, String accessionNumber,
-                                String phn, String modality) {
+                                String phn, String modality,
+                                int numberOfSeries, int numberOfInstances) {
         try {
-            String body = buildFhirBody(studyInstanceUid, accessionNumber, phn, modality);
+            String body = buildFhirBody(studyInstanceUid, accessionNumber, phn, modality,
+                                        numberOfSeries, numberOfInstances);
             String url  = hhmisRestUrl + "/api/v1/ris/ImagingStudy/" + studyInstanceUid;
 
             webClient.put()
@@ -73,7 +77,8 @@ public class HhmisService {
     }
 
     private String buildFhirBody(String studyUid, String accessionNumber,
-                                  String phn, String modality) {
+                                  String phn, String modality,
+                                  int numberOfSeries, int numberOfInstances) {
         String now = ZonedDateTime.now(ZoneId.of("Asia/Colombo"))
                 .format(FHIR_DT);
 
@@ -113,8 +118,8 @@ public class HhmisService {
                "    \"identifier\": { \"value\": \"" + phn + "\" }\n" +
                "  },\n" +
                "  \"started\": \"" + now + "\",\n" +
-               "  \"numberOfSeries\": 1,\n" +
-               "  \"numberOfInstances\": 1,\n" +
+               "  \"numberOfSeries\": " + numberOfSeries + ",\n" +
+               "  \"numberOfInstances\": " + numberOfInstances + ",\n" +
                "  \"contained\": [\n" +
                "    {\n" +
                "      \"resourceType\": \"Endpoint\",\n" +
