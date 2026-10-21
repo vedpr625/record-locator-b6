@@ -103,7 +103,17 @@ public class RisController {
             @RequestParam String modality) {
 
         try {
-            String studyUid = studyService.performStudy(accessionNumber, phn, patientName, modality);
+            // Use the order's own StudyInstanceUID from the worklist (looked up server-side by
+            // accession number) so the study matches what the hospital system created.
+            String orderStudyUid = worklistService.fetchTodayWorklist().stream()
+                    .filter(i -> accessionNumber.equals(i.getAccessionNumber()))
+                    .map(WorklistItem::getStudyInstanceUid)
+                    .filter(u -> u != null && !u.isBlank())
+                    .findFirst()
+                    .orElse(null);
+
+            String studyUid = studyService.performStudy(accessionNumber, phn, patientName, modality,
+                    orderStudyUid);
             return ResponseEntity.ok(Map.of(
                     "success", true,
                     "studyUid", studyUid,

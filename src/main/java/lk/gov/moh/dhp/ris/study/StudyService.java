@@ -74,12 +74,22 @@ public class StudyService {
      * Returns the StudyInstanceUID on success.
      */
     public String performStudy(String accessionNumber, String phn,
-                               String patientName, String modality) throws Exception {
+                               String patientName, String modality,
+                               String orderStudyInstanceUid) throws Exception {
         // 1. Pick sample JPEG by modality
         byte[] jpegBytes = pickSampleImage(modality);
 
-        // 2. Generate UIDs
-        String studyUid   = generateUid();
+        // 2. UIDs. The StudyInstanceUID must be the one from the order (MWL item) so that
+        //    HHMIS, MPPS and the archive all refer to the same study; only generate one
+        //    as a last resort.
+        String studyUid;
+        if (orderStudyInstanceUid != null && !orderStudyInstanceUid.isBlank()) {
+            studyUid = orderStudyInstanceUid.trim();
+        } else {
+            studyUid = generateUid();
+            log.warn("No StudyInstanceUID on the worklist item for acc={}; generated {} " +
+                     "(HHMIS may not recognise it)", accessionNumber, studyUid);
+        }
         String seriesUid  = generateUid();
         String instanceUid = generateUid();
 
