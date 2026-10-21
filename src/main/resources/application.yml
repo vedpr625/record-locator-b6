@@ -30,6 +30,7 @@ national-rl:
 hhmis:
   rest-url: ${HHMIS_REST_URL:https://nova-qa-ris.external.dxdyhosting.xyz}
   viewer-base-url: ${HHMIS_VIEWER_URL:https://dcma.duckdns.org/ohif/viewer}
+  bearer-token: ${HHMIS_BEARER_TOKEN:}
 
 # Sample X-ray images on server
 sample:

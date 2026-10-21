@@ -34,6 +34,9 @@ public class HhmisService {
     @Value("${hhmis.viewer-base-url:}")
     private String viewerBaseUrl;
 
+    @Value("${hhmis.bearer-token:}")
+    private String bearerToken;
+
     @Value("${hospital.facility-id}")
     private String facilityId;
 
@@ -61,10 +64,13 @@ public class HhmisService {
                                         numberOfSeries, numberOfInstances);
             String url  = hhmisRestUrl + "/api/v1/ris/ImagingStudy/" + studyInstanceUid;
 
-            webClient.put()
+            var req = webClient.put()
                     .uri(url)
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .bodyValue(body)
+                    .contentType(MediaType.APPLICATION_JSON);
+            if (bearerToken != null && !bearerToken.isBlank()) {
+                req = req.header("Authorization", "Bearer " + bearerToken);
+            }
+            req.bodyValue(body)
                     .retrieve()
                     .toBodilessEntity()
                     .block();
