@@ -21,7 +21,7 @@ import java.util.regex.Pattern;
 public class RecordLocatorService {
 
     private static final Logger log = LoggerFactory.getLogger(RecordLocatorService.class);
-    private static final Pattern PHN = Pattern.compile("[A-Za-z0-9._-]{1,64}");
+    private static final Pattern PHN = Pattern.compile("[^\\p{Cntrl}]{1,255}");
 
     @Value("${national-rl.push-url:}")
     private String pushUrl;
@@ -51,7 +51,7 @@ public class RecordLocatorService {
             return;
         }
         if (!PHN.matcher(phn == null ? "" : phn).matches()) {
-            log.warn("Record Locator: PHN '{}' has unsupported characters or length (allowed: 1-64 of A-Za-z0-9._-), pointer not registered", phn);
+            log.warn("Record Locator: PHN '{}' is blank, too long or has control characters, pointer not registered", phn);
             return;
         }
         try {

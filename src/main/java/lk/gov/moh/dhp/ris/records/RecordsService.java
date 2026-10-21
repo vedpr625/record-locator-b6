@@ -42,9 +42,11 @@ public class RecordsService {
         List<RecordItem> results = new ArrayList<>();
         try {
             // FHIR DocumentReference search: GET /fhir/r4/DocumentReference?patient=Patient/{phn}
-            String url = nationalRlUrl + "/fhir/r4/DocumentReference?patient=Patient/" + phn + "&status=current";
+            String url = nationalRlUrl + "/fhir/r4/DocumentReference?patient="
+                    + java.net.URLEncoder.encode("Patient/" + phn, java.nio.charset.StandardCharsets.UTF_8)
+                    + "&status=current";
 
-            var req = webClient.get().uri(url);
+            var req = webClient.get().uri(java.net.URI.create(url));
             if (bearerToken != null && !bearerToken.isBlank()) {
                 req = req.header("Authorization", "Bearer " + bearerToken);
             }
