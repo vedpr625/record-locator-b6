@@ -24,6 +24,8 @@ Environment="SAMPLE_IMAGES_PATH=/opt/ris/sample-images"
 Environment="HHMIS_REST_URL=https://nova-qa-ris.external.dxdyhosting.xyz"
 Environment="HHMIS_VIEWER_URL=https://dcma.duckdns.org/viewer"
 Environment="WORKLIST_DAYS_BACK=7"
+Environment="RL_PUSH_URL=http://central-lk.duckdns.org:8082"
+Environment="RL_WADO_BASE_URL=https://dcma.duckdns.org/orthanc/dicom-web"
 ExecStart=/usr/bin/env java -jar /opt/ris/hospital-ris-new.jar
 Restart=on-failure
 RestartSec=5

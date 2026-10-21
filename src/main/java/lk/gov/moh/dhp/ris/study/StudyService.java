@@ -49,16 +49,18 @@ public class StudyService {
     private final WebClient webClient;
     private final MppsService mppsService;
     private final HhmisService hhmisService;
+    private final RecordLocatorService recordLocatorService;
     private final Random random = new Random();
 
     // accessionNumber → studyInstanceUID (in-memory, demo only)
     private final Map<String, String> completedStudies = new ConcurrentHashMap<>();
 
     public StudyService(WebClient.Builder webClientBuilder, MppsService mppsService,
-                        HhmisService hhmisService) {
+                        HhmisService hhmisService, RecordLocatorService recordLocatorService) {
         this.webClient = webClientBuilder.build();
         this.mppsService = mppsService;
         this.hhmisService = hhmisService;
+        this.recordLocatorService = recordLocatorService;
     }
 
     public boolean isCompleted(String accessionNumber) {
@@ -115,6 +117,9 @@ public class StudyService {
         int[] counts = queryOrthancCounts(studyUid);
         hhmisService.notifyStudyDone(studyUid, accessionNumber, phn, modality,
                 counts[0], counts[1]);
+
+        // 9. Register a pointer at the national Record Locator (non-fatal)
+        recordLocatorService.registerPointer(studyUid, phn, patientName, modality);
 
         return studyUid;
     }

@@ -36,6 +36,10 @@ national-rl:
   url: ${NATIONAL_RL_URL:http://localhost:8082}
   # Bearer JWT (scope record-locator:read) - only needed when the RL runs without the 'dev' profile
   bearer-token: ${NATIONAL_RL_TOKEN:}
+  # Pointer push after Perform Study. Blank = disabled. Usually same host as url.
+  push-url: ${RL_PUSH_URL:}
+  # Public DICOMweb base of THIS hospital's Orthanc (stored in the pointer)
+  wado-base-url: ${RL_WADO_BASE_URL:http://localhost:8042/dicom-web}
 
 # HHMIS study-done notification
 hhmis:
