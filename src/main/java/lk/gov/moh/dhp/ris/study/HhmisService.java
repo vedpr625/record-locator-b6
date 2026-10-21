@@ -4,6 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 
@@ -70,12 +71,23 @@ public class HhmisService {
             if (bearerToken != null && !bearerToken.isBlank()) {
                 req = req.header("Authorization", "Bearer " + bearerToken);
             }
-            req.bodyValue(body)
-                    .retrieve()
-                    .toBodilessEntity()
+            log.info("HHMIS request: PUT {} body={}", url, body.replaceAll("\\s+", " "));
+
+            // exchangeToMono (not retrieve) so a non-2xx answer still gives us its status and body
+            ResponseEntity<String> resp = req.bodyValue(body)
+                    .exchangeToMono(r -> r.toEntity(String.class))
                     .block();
 
-            log.info("HHMIS notified: PUT {} acc={} phn={}", url, accessionNumber, phn);
+            if (resp != null && resp.getStatusCode().is2xxSuccessful()) {
+                log.info("HHMIS notified: PUT {} -> {} acc={} phn={}",
+                        url, resp.getStatusCode().value(), accessionNumber, phn);
+            } else {
+                String respBody = resp == null || resp.getBody() == null ? "" : resp.getBody();
+                if (respBody.length() > 1000) respBody = respBody.substring(0, 1000) + "…";
+                log.warn("HHMIS notification rejected for acc={} (non-fatal): PUT {} -> {} response={}",
+                        accessionNumber, url,
+                        resp == null ? "no response" : resp.getStatusCode().value(), respBody);
+            }
 
         } catch (Exception e) {
             log.warn("HHMIS notification failed for acc={} (non-fatal): {}", accessionNumber, e.getMessage());
