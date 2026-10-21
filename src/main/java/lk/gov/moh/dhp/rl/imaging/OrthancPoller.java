@@ -49,8 +49,8 @@ public class OrthancPoller {
     private static final Logger log = LoggerFactory.getLogger(OrthancPoller.class);
     private static final int CHANGES_PAGE_SIZE = 100;
     private static final String STABLE_STUDY = "StableStudy";
-    /** C-5: PHN must be exactly 10 digits — same constraint as ConsentEventRequest/PointerEventRequest. */
-    private static final Pattern PHN_PATTERN = Pattern.compile("\\d{10}");
+    /** C-5: PHN must be 1-64 chars of [A-Za-z0-9._-] (no path/SQL metacharacters) — same constraint as ConsentEventRequest/PointerEventRequest. */
+    private static final Pattern PHN_PATTERN = Pattern.compile("[A-Za-z0-9._-]{1,64}");
 
     @Value("${rl.orthanc.base-url}")
     private String orthancBaseUrl;
@@ -182,7 +182,7 @@ public class OrthancPoller {
         // A crafted PatientID with SQL metacharacters, FHIR path separators, or
         // another patient's PHN must be rejected rather than silently ingested.
         if (!PHN_PATTERN.matcher(phn).matches()) {
-            log.warn("study {} has invalid PatientID '{}' (expected 10-digit PHN), skipping",
+            log.warn("study {} has invalid PatientID '{}' (expected 1-64 chars of A-Za-z0-9._-), skipping",
                     orthancStudyId, phn);
             return;
         }

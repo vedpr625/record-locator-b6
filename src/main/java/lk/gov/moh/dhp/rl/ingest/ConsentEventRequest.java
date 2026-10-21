@@ -24,7 +24,7 @@ import jakarta.validation.constraints.Size;
 public record ConsentEventRequest(
 
         /** Patient Health Number whose consent changed. */
-        @NotBlank @Pattern(regexp = "\\d{10}", message = "phn must be exactly 10 digits") String phn,
+        @NotBlank @Pattern(regexp = "[A-Za-z0-9._-]{1,64}", message = "phn must be 1-64 characters: letters, digits, . _ -") String phn,
 
         /**
          * True = patient has opted in (data accessible).
