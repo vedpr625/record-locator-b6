@@ -47,6 +47,14 @@ public class WorklistService {
     @Value("${dcm4chee.calling-ae}")
     private String callingAeTitle;
 
+    /** Days back (including today) for which still-SCHEDULED items are listed. 0 = today only. */
+    @Value("${worklist.days-back:0}")
+    private int daysBack;
+
+    /** Hospital timezone, used to decide what "today" is (server clock is often UTC). */
+    @Value("${hospital.timezone:Asia/Colombo}")
+    private String timezone;
+
     /**
      * Returns today's MWL entries from dcm4chee.
      * Returns empty list (no crash) if dcm4chee is unreachable.
@@ -111,7 +119,7 @@ public class WorklistService {
             Sequence spsSeq = keys.newSequence(Tag.ScheduledProcedureStepSequence, 1);
             Attributes spsItem = new Attributes();
             spsItem.setString(Tag.Modality,                          VR.CS, "");
-            spsItem.setString(Tag.ScheduledProcedureStepStartDate,   VR.DA, todayDicom());
+            spsItem.setString(Tag.ScheduledProcedureStepStartDate,   VR.DA, startDateKey());
             spsItem.setString(Tag.ScheduledProcedureStepStartTime,   VR.TM, "");
             spsItem.setString(Tag.ScheduledProcedureStepDescription, VR.LO, "");
             spsItem.setString(Tag.ScheduledProcedureStepID,          VR.SH, "");
@@ -195,7 +203,17 @@ public class WorklistService {
     }
 
     private String todayDicom() {
-        return java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.BASIC_ISO_DATE);
+        return java.time.LocalDate.now(java.time.ZoneId.of(timezone))
+                .format(java.time.format.DateTimeFormatter.BASIC_ISO_DATE);
+    }
+
+    /** DICOM date matching key: single day, or a range "yyyyMMdd-yyyyMMdd" when days-back > 0. */
+    private String startDateKey() {
+        String today = todayDicom();
+        if (daysBack <= 0) return today;
+        String from = java.time.LocalDate.now(java.time.ZoneId.of(timezone)).minusDays(daysBack)
+                .format(java.time.format.DateTimeFormatter.BASIC_ISO_DATE);
+        return from + "-" + today;
     }
 
     private String formatDate(String dicomDate) {

@@ -13,6 +13,11 @@ hospital:
   name: ${HOSPITAL_NAME:Homagama Hospital}
   short-code: ${HOSPITAL_SHORT_CODE:HMG}
   facility-id: ${FACILITY_ID:29751}
+  timezone: ${HOSPITAL_TZ:Asia/Colombo}
+
+# Worklist: 0 = today only; N = also show still-SCHEDULED items from the last N days
+worklist:
+  days-back: ${WORKLIST_DAYS_BACK:0}
 
 # dcm4chee MWL C-FIND + REST API
 dcm4chee:
