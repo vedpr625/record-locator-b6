@@ -34,6 +34,8 @@ orthanc:
 # National RL
 national-rl:
   url: ${NATIONAL_RL_URL:http://localhost:8082}
+  # Bearer JWT (scope record-locator:read) - only needed when the RL runs without the 'dev' profile
+  bearer-token: ${NATIONAL_RL_TOKEN:}
 
 # HHMIS study-done notification
 hhmis:

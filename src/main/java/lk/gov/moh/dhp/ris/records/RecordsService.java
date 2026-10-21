@@ -22,6 +22,9 @@ public class RecordsService {
     @Value("${national-rl.url}")
     private String nationalRlUrl;
 
+    @Value("${national-rl.bearer-token:}")
+    private String bearerToken;
+
     @Value("${hospital.facility-id}")
     private String myFacilityId;
 
@@ -41,8 +44,11 @@ public class RecordsService {
             // FHIR DocumentReference search: GET /fhir/r4/DocumentReference?patient=Patient/{phn}
             String url = nationalRlUrl + "/fhir/r4/DocumentReference?patient=Patient/" + phn + "&status=current";
 
-            String body = webClient.get()
-                    .uri(url)
+            var req = webClient.get().uri(url);
+            if (bearerToken != null && !bearerToken.isBlank()) {
+                req = req.header("Authorization", "Bearer " + bearerToken);
+            }
+            String body = req
                     .retrieve()
                     .bodyToMono(String.class)
                     .block();
@@ -60,7 +66,7 @@ public class RecordsService {
             }
 
         } catch (Exception e) {
-            log.warn("national-rl search failed for PHN {}: {}", phn, e.getMessage());
+            log.warn("national-rl search failed for PHN {} (url={}): {}", phn, nationalRlUrl, e.getMessage());
         }
         return results;
     }
