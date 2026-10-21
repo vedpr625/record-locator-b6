@@ -170,18 +170,28 @@ public class StudyService {
         org.dcm4che3.data.Attributes fmi = attrs.createFileMetaInformation(
                 org.dcm4che3.data.UID.JPEGBaseline8Bit);
 
-        // Read JPEG dimensions for image attributes
+        // DICOM "JPEG Baseline" must be baseline (sequential) JPEG; re-encode if the
+        // sample image is progressive, otherwise Orthanc/viewers may fail to decode it.
+        jpegBytes = ensureBaselineJpeg(jpegBytes);
+
+        // Read JPEG dimensions and channel count for image attributes
         java.awt.image.BufferedImage img = javax.imageio.ImageIO.read(
                 new java.io.ByteArrayInputStream(jpegBytes));
-        if (img != null) {
-            attrs.setInt(org.dcm4che3.data.Tag.Rows,             org.dcm4che3.data.VR.US, img.getHeight());
-            attrs.setInt(org.dcm4che3.data.Tag.Columns,          org.dcm4che3.data.VR.US, img.getWidth());
-            attrs.setInt(org.dcm4che3.data.Tag.BitsAllocated,    org.dcm4che3.data.VR.US, 8);
-            attrs.setInt(org.dcm4che3.data.Tag.BitsStored,       org.dcm4che3.data.VR.US, 8);
-            attrs.setInt(org.dcm4che3.data.Tag.HighBit,          org.dcm4che3.data.VR.US, 7);
-            attrs.setInt(org.dcm4che3.data.Tag.SamplesPerPixel,  org.dcm4che3.data.VR.US, 3);
-            attrs.setInt(org.dcm4che3.data.Tag.PixelRepresentation, org.dcm4che3.data.VR.US, 0);
-            attrs.setString(org.dcm4che3.data.Tag.PhotometricInterpretation, org.dcm4che3.data.VR.CS, "YBR_FULL_422");
+        if (img == null) {
+            throw new Exception("Sample image could not be decoded as a JPEG");
+        }
+        boolean gray = img.getRaster().getNumBands() == 1;
+        attrs.setInt(org.dcm4che3.data.Tag.Rows,             org.dcm4che3.data.VR.US, img.getHeight());
+        attrs.setInt(org.dcm4che3.data.Tag.Columns,          org.dcm4che3.data.VR.US, img.getWidth());
+        attrs.setInt(org.dcm4che3.data.Tag.BitsAllocated,    org.dcm4che3.data.VR.US, 8);
+        attrs.setInt(org.dcm4che3.data.Tag.BitsStored,       org.dcm4che3.data.VR.US, 8);
+        attrs.setInt(org.dcm4che3.data.Tag.HighBit,          org.dcm4che3.data.VR.US, 7);
+        attrs.setInt(org.dcm4che3.data.Tag.SamplesPerPixel,  org.dcm4che3.data.VR.US, gray ? 1 : 3);
+        attrs.setInt(org.dcm4che3.data.Tag.PixelRepresentation, org.dcm4che3.data.VR.US, 0);
+        attrs.setString(org.dcm4che3.data.Tag.PhotometricInterpretation, org.dcm4che3.data.VR.CS,
+                gray ? "MONOCHROME2" : "YBR_FULL_422");
+        if (!gray) {
+            attrs.setInt(org.dcm4che3.data.Tag.PlanarConfiguration, org.dcm4che3.data.VR.US, 0);
         }
 
         // Encapsulated pixel data
@@ -198,6 +208,57 @@ public class StudyService {
         dos.close();
 
         return baos.toByteArray();
+    }
+
+    /** True if the JPEG uses a progressive frame header (SOF2). */
+    private static boolean isProgressiveJpeg(byte[] b) {
+        int i = 2; // skip SOI
+        while (i + 3 < b.length && (b[i] & 0xFF) == 0xFF) {
+            int marker = b[i + 1] & 0xFF;
+            if (marker == 0xC2) return true;                       // progressive DCT
+            if (marker == 0xC0 || marker == 0xC1) return false;    // baseline / extended sequential
+            if (marker == 0xDA) return false;                      // start of scan, no SOF found
+            int len = ((b[i + 2] & 0xFF) << 8) | (b[i + 3] & 0xFF);
+            i += 2 + len;
+        }
+        return false;
+    }
+
+    /** Re-encode progressive JPEGs as baseline so they are valid for JPEG Baseline (1.2.840.10008.1.2.4.50). */
+    private static byte[] ensureBaselineJpeg(byte[] jpegBytes) throws Exception {
+        if (!isProgressiveJpeg(jpegBytes)) return jpegBytes;
+
+        java.awt.image.BufferedImage src = javax.imageio.ImageIO.read(
+                new java.io.ByteArrayInputStream(jpegBytes));
+        if (src == null) throw new Exception("Sample image could not be decoded as a JPEG");
+
+        // JPEG writer needs plain gray or RGB (no alpha)
+        java.awt.image.BufferedImage out = src;
+        if (src.getType() != java.awt.image.BufferedImage.TYPE_BYTE_GRAY
+                && src.getType() != java.awt.image.BufferedImage.TYPE_3BYTE_BGR) {
+            out = new java.awt.image.BufferedImage(src.getWidth(), src.getHeight(),
+                    src.getRaster().getNumBands() == 1
+                            ? java.awt.image.BufferedImage.TYPE_BYTE_GRAY
+                            : java.awt.image.BufferedImage.TYPE_3BYTE_BGR);
+            java.awt.Graphics2D g = out.createGraphics();
+            g.drawImage(src, 0, 0, null);
+            g.dispose();
+        }
+
+        javax.imageio.ImageWriter writer = javax.imageio.ImageIO.getImageWritersByFormatName("jpeg").next();
+        javax.imageio.ImageWriteParam param = writer.getDefaultWriteParam();
+        param.setProgressiveMode(javax.imageio.ImageWriteParam.MODE_DISABLED);
+        param.setCompressionMode(javax.imageio.ImageWriteParam.MODE_EXPLICIT);
+        param.setCompressionQuality(0.95f);
+
+        ByteArrayOutputStream bos = new ByteArrayOutputStream();
+        try (javax.imageio.stream.ImageOutputStream ios = javax.imageio.ImageIO.createImageOutputStream(bos)) {
+            writer.setOutput(ios);
+            writer.write(null, new javax.imageio.IIOImage(out, null, null), param);
+        } finally {
+            writer.dispose();
+        }
+        return bos.toByteArray();
     }
 
     /**
