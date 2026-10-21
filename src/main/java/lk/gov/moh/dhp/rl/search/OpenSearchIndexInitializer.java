@@ -104,7 +104,11 @@ public class OpenSearchIndexInitializer {
                     }
                     """;
 
-            String response = restTemplate.postForObject(indexUrl, body, String.class);
+            // OpenSearch creates an index with PUT /{index}; POST returns 405.
+            org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
+            headers.setContentType(org.springframework.http.MediaType.APPLICATION_JSON);
+            String response = restTemplate.exchange(indexUrl, HttpMethod.PUT,
+                    new org.springframework.http.HttpEntity<>(body, headers), String.class).getBody();
             JsonNode resp = objectMapper.readTree(response);
             if (resp.path("acknowledged").asBoolean(false)) {
                 log.info("OpenSearch index '{}' created successfully", index);
