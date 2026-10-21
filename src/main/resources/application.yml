@@ -29,7 +29,7 @@ national-rl:
 # HHMIS study-done notification
 hhmis:
   rest-url: ${HHMIS_REST_URL:https://nova-qa-ris.external.dxdyhosting.xyz}
-  viewer-base-url: ${HHMIS_VIEWER_URL:}
+  viewer-base-url: ${HHMIS_VIEWER_URL:https://dcma.duckdns.org/ohif/viewer}
 
 # Sample X-ray images on server
 sample:

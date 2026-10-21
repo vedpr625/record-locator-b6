@@ -77,10 +77,13 @@ public class HhmisService {
         String now = ZonedDateTime.now(ZoneId.of("Asia/Colombo"))
                 .format(FHIR_DT);
 
-        // Viewer address (optional — empty string if not configured)
-        String viewerAddress = viewerBaseUrl.isBlank()
+        // Viewer address: use configured OHIF viewer URL, else fall back to DICOM UID URN
+        String viewerAddress = (viewerBaseUrl == null || viewerBaseUrl.isBlank())
                 ? "urn:oid:" + studyUid
                 : viewerBaseUrl + "?StudyInstanceUIDs=" + studyUid;
+
+        // modality coding system
+        String modalitySystem = "http://dicom.nema.org/resources/ontology/DCM";
 
         return "{\n" +
                "  \"resourceType\": \"ImagingStudy\",\n" +
@@ -100,6 +103,12 @@ public class HhmisService {
                "    }\n" +
                "  ],\n" +
                "  \"status\": \"available\",\n" +
+               "  \"modality\": [\n" +
+               "    {\n" +
+               "      \"system\": \"" + modalitySystem + "\",\n" +
+               "      \"code\": \"" + modality + "\"\n" +
+               "    }\n" +
+               "  ],\n" +
                "  \"subject\": {\n" +
                "    \"identifier\": { \"value\": \"" + phn + "\" }\n" +
                "  },\n" +
