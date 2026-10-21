@@ -451,10 +451,12 @@
             <thead>
               <tr>
                 <th>Modality</th>
+                <th>Patient</th>
                 <th>Study Date</th>
                 <th>Facility</th>
                 <th>Source</th>
                 <th>Study UID</th>
+                <th>Images</th>
               </tr>
             </thead>
             <tbody>
@@ -464,6 +466,7 @@
                         th:classappend="'mod-' + ${rec.modality}"
                         th:text="${rec.modality}"></span>
                 </td>
+                <td th:text="${#strings.isEmpty(rec.patientName)} ? '—' : ${rec.patientName}"></td>
                 <td th:text="${rec.studyDate}" style="font-weight:500"></td>
                 <td th:text="${rec.facilityName}"></td>
                 <td>
@@ -477,6 +480,10 @@
                 <td>
                   <span style="font-size:0.75rem;font-family:monospace;color:var(--text-muted)"
                         th:text="${rec.studyUid}"></span>
+                </td>
+                <td>
+                  <a th:if="${!#strings.isEmpty(rec.viewerUrl)}" th:href="${rec.viewerUrl}" target="_blank"
+                     class="btn btn-sm btn-outline-primary"><i class="bi bi-eye me-1"></i>View</a>
                 </td>
               </tr>
             </tbody>

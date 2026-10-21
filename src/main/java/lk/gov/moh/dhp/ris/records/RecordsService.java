@@ -25,6 +25,10 @@ public class RecordsService {
     @Value("${national-rl.bearer-token:}")
     private String bearerToken;
 
+    /** Path of the OHIF viewer on the host that owns the study (OHIF is at the site root). */
+    @Value("${national-rl.viewer-path:/viewer}")
+    private String viewerPath;
+
     @Value("${hospital.facility-id}")
     private String myFacilityId;
 
@@ -102,7 +106,25 @@ public class RecordsService {
             // LOCAL if facilityHin matches this hospital
             boolean local = !facilityHin.isBlank() && facilityHin.equals(myFacilityId);
 
+            String wadoUrl = resource.path("content").path(0).path("attachment").path("url").asText("");
+            String viewerUrl = "";
+            try {
+                java.net.URI u = java.net.URI.create(wadoUrl);
+                if (u.getHost() != null) {
+                    viewerUrl = u.getScheme() + "://" + u.getAuthority() + viewerPath
+                            + "?StudyInstanceUIDs=" + studyUid;
+                }
+            } catch (Exception ignore) { /* leave blank */ }
+
+            // The Record Locator does not return the patient name; read it from the
+            // study's DICOM metadata at the WADO-RS URL (best effort, short timeout).
+            if (patientName.isBlank() && !wadoUrl.isBlank()) {
+                patientName = fetchPatientName(wadoUrl);
+            }
+
             return RecordItem.builder()
+                    .wadoUrl(wadoUrl)
+                    .viewerUrl(viewerUrl)
                     .studyUid(studyUid)
                     .patientName(patientName)
                     .phn(phn)
@@ -115,6 +137,24 @@ public class RecordsService {
         } catch (Exception e) {
             log.warn("skipping malformed record: {}", e.getMessage());
             return null;
+        }
+    }
+
+    /** GET {wadoUrl}/metadata (DICOMweb) and read PatientName (0010,0010). Never throws. */
+    private String fetchPatientName(String wadoUrl) {
+        try {
+            String body = webClient.get().uri(java.net.URI.create(wadoUrl + "/metadata"))
+                    .accept(org.springframework.http.MediaType.parseMediaType("application/dicom+json"))
+                    .retrieve().bodyToMono(String.class)
+                    .block(java.time.Duration.ofSeconds(4));
+            if (body == null) return "";
+            JsonNode name = new com.fasterxml.jackson.databind.ObjectMapper().readTree(body)
+                    .path(0).path("00100010").path("Value").path(0);
+            String n = name.isObject() ? name.path("Alphabetic").asText("") : name.asText("");
+            return n.replace('^', ' ').trim();
+        } catch (Exception e) {
+            log.debug("could not read patient name from {}: {}", wadoUrl, e.getMessage());
+            return "";
         }
     }
 
