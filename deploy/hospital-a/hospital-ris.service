@@ -1,0 +1,32 @@
+# Hospital A (Homagama) RIS as a systemd service.
+# Install: sudo cp hospital-ris.service /etc/systemd/system/ && sudo systemctl daemon-reload
+#          sudo systemctl enable --now hospital-ris
+# The HHMIS token lives in /opt/ris/ris.env (not here, not on the command line).
+[Unit]
+Description=Hospital RIS (Homagama)
+After=network.target docker.service
+
+[Service]
+User=ubuntu
+EnvironmentFile=/opt/ris/ris.env
+Environment="PORT=8081"
+Environment="CONTEXT_PATH=/ris"
+Environment="HOSPITAL_NAME=Homagama Hospital"
+Environment="HOSPITAL_SHORT_CODE=HMG"
+Environment="FACILITY_ID=29751"
+Environment="DCM4CHEE_HOST=localhost"
+Environment="DCM4CHEE_PORT=11112"
+Environment="DCM4CHEE_AE_TITLE=WORKLIST"
+Environment="DCM4CHEE_REST_URL=http://localhost:8080/dcm4chee-arc"
+Environment="ORTHANC_REST_URL=http://localhost:8042"
+Environment="NATIONAL_RL_URL=http://central-lk.duckdns.org:8082"
+Environment="SAMPLE_IMAGES_PATH=/opt/ris/sample-images"
+Environment="HHMIS_REST_URL=https://nova-qa-ris.external.dxdyhosting.xyz"
+Environment="HHMIS_VIEWER_URL=https://dcma.duckdns.org/viewer"
+Environment="WORKLIST_DAYS_BACK=7"
+ExecStart=/usr/bin/env java -jar /opt/ris/hospital-ris-new.jar
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
