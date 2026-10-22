@@ -79,8 +79,8 @@ public class StudyService {
                                String patientName, String modality,
                                String orderStudyInstanceUid) throws Exception {
         // 1. Pick sample JPEG by modality
-        File sampleFile = pickSampleFile(modality);
-        byte[] jpegBytes = Files.readAllBytes(sampleFile.toPath());
+        SampleImage sample = pickSample(modality);
+        byte[] jpegBytes = sample.bytes();
 
         // 2. UIDs. The StudyInstanceUID must be the one from the order (MWL item) so that
         //    HHMIS, MPPS and the archive all refer to the same study; only generate one
@@ -98,7 +98,7 @@ public class StudyService {
 
         // 3. Convert JPEG → DICOM in memory
         byte[] dicomBytes = convertToDicom(jpegBytes, studyUid, seriesUid, instanceUid,
-                accessionNumber, phn, patientName, modality, sampleFile.getName());
+                accessionNumber, phn, patientName, modality, sample.name());
 
         // 4. Push to Orthanc
         pushToOrthanc(dicomBytes);
@@ -125,30 +125,43 @@ public class StudyService {
         return studyUid;
     }
 
-    private File pickSampleFile(String modality) throws Exception {
+    /** A sample image: its file name (used for the AP/lateral hint) and JPEG bytes. */
+    private record SampleImage(String name, byte[] bytes) {}
+
+    /** Images bundled in the jar (public-domain chest/body X-rays): used when the folder has none. */
+    private static final String[] BUNDLED_IMAGES = {"xray-ap.jpg", "xray-lat.jpg"};
+
+    /**
+     * Pick a sample JPEG. Files in the configured folder win (CR-chest-1.jpg, MR-brain-1.jpg, ...
+     * matched by modality prefix, else any JPEG); if the folder is missing or has no JPEGs,
+     * one of the images bundled in the application is used.
+     */
+    private SampleImage pickSample(String modality) throws Exception {
         File dir = new File(sampleImagesPath);
-        if (!dir.exists() || !dir.isDirectory()) {
-            throw new Exception("Sample images folder not found: " + sampleImagesPath);
-        }
-
-        // Filter by modality prefix: CR-chest-1.jpg, MR-brain-1.jpg, etc.
-        File[] matches = dir.listFiles(f ->
-                f.getName().toLowerCase().startsWith(modality.toLowerCase() + "-") &&
-                (f.getName().endsWith(".jpg") || f.getName().endsWith(".jpeg")));
-
-        // Fall back to any JPEG if no modality match
-        if (matches == null || matches.length == 0) {
+        File[] matches = null;
+        if (dir.exists() && dir.isDirectory()) {
             matches = dir.listFiles(f ->
-                    f.getName().endsWith(".jpg") || f.getName().endsWith(".jpeg"));
+                    f.getName().toLowerCase().startsWith(modality.toLowerCase() + "-") &&
+                    (f.getName().endsWith(".jpg") || f.getName().endsWith(".jpeg")));
+            if (matches == null || matches.length == 0) {
+                matches = dir.listFiles(f ->
+                        f.getName().endsWith(".jpg") || f.getName().endsWith(".jpeg"));
+            }
+        }
+        if (matches != null && matches.length > 0) {
+            File chosen = matches[random.nextInt(matches.length)];
+            log.info("using sample image from folder: {}", chosen.getName());
+            return new SampleImage(chosen.getName(), Files.readAllBytes(chosen.toPath()));
         }
 
-        if (matches == null || matches.length == 0) {
-            throw new Exception("No sample JPEG images found in " + sampleImagesPath);
+        String name = BUNDLED_IMAGES[random.nextInt(BUNDLED_IMAGES.length)];
+        try (java.io.InputStream in = getClass().getResourceAsStream("/sample-images/" + name)) {
+            if (in == null) {
+                throw new Exception("No sample JPEG images in " + sampleImagesPath + " and none bundled");
+            }
+            log.info("using bundled sample image: {}", name);
+            return new SampleImage(name, in.readAllBytes());
         }
-
-        File chosen = matches[random.nextInt(matches.length)];
-        log.info("using sample image: {}", chosen.getName());
-        return chosen;
     }
 
     private byte[] convertToDicom(byte[] jpegBytes,
