@@ -79,7 +79,8 @@ public class StudyService {
                                String patientName, String modality,
                                String orderStudyInstanceUid) throws Exception {
         // 1. Pick sample JPEG by modality
-        byte[] jpegBytes = pickSampleImage(modality);
+        File sampleFile = pickSampleFile(modality);
+        byte[] jpegBytes = Files.readAllBytes(sampleFile.toPath());
 
         // 2. UIDs. The StudyInstanceUID must be the one from the order (MWL item) so that
         //    HHMIS, MPPS and the archive all refer to the same study; only generate one
@@ -97,7 +98,7 @@ public class StudyService {
 
         // 3. Convert JPEG → DICOM in memory
         byte[] dicomBytes = convertToDicom(jpegBytes, studyUid, seriesUid, instanceUid,
-                accessionNumber, phn, patientName, modality);
+                accessionNumber, phn, patientName, modality, sampleFile.getName());
 
         // 4. Push to Orthanc
         pushToOrthanc(dicomBytes);
@@ -124,7 +125,7 @@ public class StudyService {
         return studyUid;
     }
 
-    private byte[] pickSampleImage(String modality) throws Exception {
+    private File pickSampleFile(String modality) throws Exception {
         File dir = new File(sampleImagesPath);
         if (!dir.exists() || !dir.isDirectory()) {
             throw new Exception("Sample images folder not found: " + sampleImagesPath);
@@ -146,18 +147,23 @@ public class StudyService {
         }
 
         File chosen = matches[random.nextInt(matches.length)];
-        log.debug("using sample image: {}", chosen.getName());
-        return Files.readAllBytes(chosen.toPath());
+        log.info("using sample image: {}", chosen.getName());
+        return chosen;
     }
 
     private byte[] convertToDicom(byte[] jpegBytes,
                                    String studyUid, String seriesUid, String instanceUid,
                                    String accessionNumber, String phn,
-                                   String patientName, String modality) throws Exception {
+                                   String patientName, String modality,
+                                   String imageName) throws Exception {
         // Use dcm4che Attributes to build DICOM dataset
         org.dcm4che3.data.Attributes attrs = new org.dcm4che3.data.Attributes();
 
-        // Patient module
+        attrs.setString(org.dcm4che3.data.Tag.SpecificCharacterSet, org.dcm4che3.data.VR.CS, "ISO_IR 192");
+
+        // Patient module (birth date / sex are type-2: present but empty, we do not know them here)
+        attrs.setNull(org.dcm4che3.data.Tag.PatientBirthDate, org.dcm4che3.data.VR.DA);
+        attrs.setNull(org.dcm4che3.data.Tag.PatientSex,       org.dcm4che3.data.VR.CS);
         attrs.setString(org.dcm4che3.data.Tag.PatientID,   org.dcm4che3.data.VR.LO, phn);
         attrs.setString(org.dcm4che3.data.Tag.PatientName, org.dcm4che3.data.VR.PN, patientName);
 
@@ -167,6 +173,27 @@ public class StudyService {
         attrs.setString(org.dcm4che3.data.Tag.StudyDate, org.dcm4che3.data.VR.DA, todayDicom());
         attrs.setString(org.dcm4che3.data.Tag.StudyTime, org.dcm4che3.data.VR.TM, nowTimeDicom());
         attrs.setString(org.dcm4che3.data.Tag.InstitutionName, org.dcm4che3.data.VR.LO, hospitalName);
+        attrs.setString(org.dcm4che3.data.Tag.StudyID, org.dcm4che3.data.VR.SH, "1");
+        attrs.setNull(org.dcm4che3.data.Tag.ReferringPhysicianName, org.dcm4che3.data.VR.PN);
+
+        // View / body part taken from the sample file name: *-ap.jpg, *-lat.jpg (default: AP)
+        String lower = imageName == null ? "" : imageName.toLowerCase();
+        boolean lateral = lower.contains("lat");
+        String viewDesc = lateral ? "Lateral" : "AP";
+        attrs.setString(org.dcm4che3.data.Tag.StudyDescription,  org.dcm4che3.data.VR.LO, modality + " " + viewDesc);
+        attrs.setString(org.dcm4che3.data.Tag.SeriesDescription, org.dcm4che3.data.VR.LO, modality + " " + viewDesc);
+        attrs.setString(org.dcm4che3.data.Tag.BodyPartExamined,  org.dcm4che3.data.VR.CS, "WHOLEBODY");
+        if (!"US".equals(modality) && !"MR".equals(modality)) {
+            attrs.setString(org.dcm4che3.data.Tag.ViewPosition, org.dcm4che3.data.VR.CS, lateral ? "LL" : "AP");
+        }
+        attrs.setString(org.dcm4che3.data.Tag.PatientOrientation, org.dcm4che3.data.VR.CS, lateral ? "A\\F" : "L\\F");
+        attrs.setString(org.dcm4che3.data.Tag.Manufacturer, org.dcm4che3.data.VR.LO, "RIS Demo Modality");
+        attrs.setString(org.dcm4che3.data.Tag.StationName,  org.dcm4che3.data.VR.SH, "HOSPITAL-RIS");
+        attrs.setString(org.dcm4che3.data.Tag.ImageType, org.dcm4che3.data.VR.CS, "ORIGINAL", "PRIMARY");
+        attrs.setString(org.dcm4che3.data.Tag.ContentDate, org.dcm4che3.data.VR.DA, todayDicom());
+        attrs.setString(org.dcm4che3.data.Tag.ContentTime, org.dcm4che3.data.VR.TM, nowTimeDicom());
+        attrs.setString(org.dcm4che3.data.Tag.SeriesDate,  org.dcm4che3.data.VR.DA, todayDicom());
+        attrs.setString(org.dcm4che3.data.Tag.SeriesTime,  org.dcm4che3.data.VR.TM, nowTimeDicom());
 
         // Series module
         attrs.setString(org.dcm4che3.data.Tag.SeriesInstanceUID, org.dcm4che3.data.VR.UI, seriesUid);
@@ -417,7 +444,8 @@ public class StudyService {
             case "MR" -> org.dcm4che3.data.UID.MRImageStorage;
             case "US" -> org.dcm4che3.data.UID.UltrasoundImageStorage;
             case "MG" -> org.dcm4che3.data.UID.DigitalMammographyXRayImageStorageForPresentation;
-            default   -> org.dcm4che3.data.UID.DigitalXRayImageStorageForPresentation; // CR, DX
+            case "CR" -> org.dcm4che3.data.UID.ComputedRadiographyImageStorage;
+            default   -> org.dcm4che3.data.UID.DigitalXRayImageStorageForPresentation; // DX and others
         };
     }
 
