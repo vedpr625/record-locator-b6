@@ -636,9 +636,17 @@ function pollWorklist() {
         if (!accCell) return;
 
         if (item.completed) {
-          accCell.innerHTML =
-            '<div><span class="status-done"><span class="tick"><i class="bi bi-check-lg"></i></span> Done</span>' +
-            (item.studyUid ? '<span class="uid-done">' + item.studyUid + '</span>' : '') + '</div>';
+          // Performed: it now lives in the Completed tab, so take it off the worklist.
+          const card = row.closest('.patient-card');
+          row.remove();
+          if (card) {
+            const left = card.querySelectorAll('.study-row').length;
+            if (left === 0) { card.remove(); }
+            else {
+              const cnt = card.querySelector('.patient-count');
+              if (cnt) cnt.textContent = left + ' study';
+            }
+          }
         } else {
           // Only re-render button if not already a button (avoid flicker)
           if (!accCell.querySelector('.btn-perform')) {

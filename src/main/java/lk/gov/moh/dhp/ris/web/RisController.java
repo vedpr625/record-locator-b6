@@ -56,7 +56,11 @@ public class RisController {
     /** Tab 1: Worklist */
     @GetMapping("/worklist")
     public String worklist(Model model) {
-        List<WorklistItem> items = worklistService.fetchTodayWorklist();
+        // Orders already performed (study exists in Orthanc) leave the worklist; they are in "Completed"
+        java.util.Set<String> performed = completedService.performedAccessions();
+        List<WorklistItem> items = worklistService.fetchTodayWorklist().stream()
+                .filter(i -> !performed.contains(i.getAccessionNumber()))
+                .toList();
 
         // Group by PHN (preserving order of first appearance)
         Map<String, List<WorklistItem>> patientGroups = new LinkedHashMap<>();
@@ -77,6 +81,7 @@ public class RisController {
     @GetMapping("/worklist/poll")
     @ResponseBody
     public ResponseEntity<List<Map<String, Object>>> worklistPoll() {
+        java.util.Set<String> performed = completedService.performedAccessions();
         List<WorklistItem> items = worklistService.fetchTodayWorklist();
         List<Map<String, Object>> result = items.stream().map(item -> {
             Map<String, Object> m = new java.util.LinkedHashMap<>();
@@ -90,7 +95,8 @@ public class RisController {
             m.put("requestedProcedureId",     item.getRequestedProcedureId());
             m.put("scheduledProcedureStepId", item.getScheduledProcedureStepId());
             m.put("studyInstanceUid",         item.getStudyInstanceUid());
-            m.put("completed",                studyService.isCompleted(item.getAccessionNumber()));
+            m.put("completed",                studyService.isCompleted(item.getAccessionNumber())
+                                                      || performed.contains(item.getAccessionNumber()));
             m.put("studyUid",                 studyService.getStudyUid(item.getAccessionNumber()));
             return m;
         }).toList();
