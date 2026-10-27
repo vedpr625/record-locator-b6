@@ -2,7 +2,6 @@ package lk.gov.moh.dhp.rl.web;
 
 import ca.uhn.fhir.rest.server.exceptions.ResourceGoneException;
 import ca.uhn.fhir.rest.server.exceptions.ResourceNotFoundException;
-import jakarta.servlet.http.HttpServletResponse;
 import lk.gov.moh.dhp.rl.audit.AuditService;
 import lk.gov.moh.dhp.rl.consent.Consent;
 import lk.gov.moh.dhp.rl.consent.ConsentGate;
@@ -32,7 +31,6 @@ class BinaryProviderTest {
     SearchService searchService;
     ConsentGate consentGate;
     AuditService auditService;
-    HttpServletResponse response;
     BinaryProvider provider;
 
     @BeforeEach
@@ -40,7 +38,6 @@ class BinaryProviderTest {
         searchService = mock(SearchService.class);
         consentGate   = mock(ConsentGate.class);
         auditService  = mock(AuditService.class);
-        response      = mock(HttpServletResponse.class);
 
         // Build with allowed hosts including our test host
         provider = new BinaryProvider(searchService, consentGate, auditService,
@@ -63,11 +60,11 @@ class BinaryProviderTest {
         when(searchService.findById("img-1")).thenReturn(Optional.of(p));
         doNothing().when(consentGate).checkRetrieve(anyString(), anyString(), anyString(), anyString());
 
-        Binary result = provider.read(new IdType("img-1"), response);
-
-        assertThat(result).isNull(); // returning null prevents HAPI from overwriting the status
-        verify(response).setStatus(HttpServletResponse.SC_TEMPORARY_REDIRECT);
-        verify(response).setHeader("Location", "https://pacs.hospital.lk/wado/img-1");
+        assertThatThrownBy(() -> provider.read(new IdType("img-1")))
+                .isInstanceOfSatisfying(RedirectException.class, ex -> {
+                    assertThat(ex.getStatusCode()).isEqualTo(307);
+                    assertThat(ex.location()).isEqualTo("https://pacs.hospital.lk/wado/img-1");
+                });
         verify(auditService).recordRetrieve("PHN001", "img-1", true);
     }
 
@@ -78,7 +75,7 @@ class BinaryProviderTest {
         when(searchService.findById("missing")).thenReturn(Optional.empty());
         IdType id = new IdType("missing");
 
-        assertThatThrownBy(() -> provider.read(id, response))
+        assertThatThrownBy(() -> provider.read(id))
                 .isInstanceOf(ResourceNotFoundException.class);
     }
 
@@ -92,7 +89,7 @@ class BinaryProviderTest {
         doNothing().when(consentGate).checkRetrieve(anyString(), anyString(), anyString(), anyString());
         IdType id = new IdType("doc-old");
 
-        assertThatThrownBy(() -> provider.read(id, response))
+        assertThatThrownBy(() -> provider.read(id))
                 .isInstanceOf(ResourceGoneException.class)
                 .hasMessageContaining("superseded");
 
@@ -113,7 +110,7 @@ class BinaryProviderTest {
         doNothing().when(consentGate).checkRetrieve(anyString(), anyString(), anyString(), anyString());
         IdType id = new IdType("doc-1");
 
-        assertThatThrownBy(() -> provider.read(id, response))
+        assertThatThrownBy(() -> provider.read(id))
                 .isInstanceOf(ResourceNotFoundException.class)
                 .hasMessageContaining(expectedMessage.trim());
 
@@ -132,9 +129,8 @@ class BinaryProviderTest {
 
         // With an empty allowedHosts set, the "!allowedHosts.isEmpty()" guard
         // is false so the host check is skipped → redirect is issued
-        Binary result = blockAll.read(new IdType("doc-1"), response);
-        assertThat(result).isNull();
-        verify(response).setStatus(HttpServletResponse.SC_TEMPORARY_REDIRECT);
+        assertThatThrownBy(() -> blockAll.read(new IdType("doc-1")))
+                .isInstanceOf(RedirectException.class);
     }
 
     // ── consent gate throws ───────────────────────────────────────────────────
@@ -148,7 +144,7 @@ class BinaryProviderTest {
                 .when(consentGate).checkRetrieve("PHN001", "doc-1", "Binary", "ITI-68");
         IdType id = new IdType("doc-1");
 
-        assertThatThrownBy(() -> provider.read(id, response))
+        assertThatThrownBy(() -> provider.read(id))
                 .isInstanceOf(ResourceNotFoundException.class);
     }
 
@@ -163,7 +159,7 @@ class BinaryProviderTest {
         doNothing().when(consentGate).checkRetrieve(anyString(), anyString(), anyString(), anyString());
         IdType id = new IdType("doc-1");
 
-        assertThatThrownBy(() -> provider.read(id, response))
+        assertThatThrownBy(() -> provider.read(id))
                 .isInstanceOf(ResourceNotFoundException.class)
                 .hasMessageContaining("invalid content URL");
 

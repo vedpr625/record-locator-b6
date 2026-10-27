@@ -6,7 +6,6 @@ import ca.uhn.fhir.rest.server.IResourceProvider;
 import ca.uhn.fhir.rest.server.exceptions.ResourceGoneException;
 import ca.uhn.fhir.rest.server.exceptions.ResourceNotFoundException;
 import jakarta.annotation.PostConstruct;
-import jakarta.servlet.http.HttpServletResponse;
 import lk.gov.moh.dhp.rl.audit.AuditService;
 import lk.gov.moh.dhp.rl.consent.ConsentGate;
 import lk.gov.moh.dhp.rl.pointer.Pointer;
@@ -25,10 +24,9 @@ import java.util.Set;
  * (WADO-RS for imaging, SeaweedFS for documents). We never proxy the bytes
  * through this service; that keeps large binary streaming out of scope.
  *
- * The redirect is written directly to HttpServletResponse and null is returned
- * so HAPI does not touch the response status. Returning a Binary object after
- * calling response.setStatus(307) causes HAPI to reset the status to 200 after
- * serialising the resource body — confirmed behaviour with HAPI 7.x.
+ * The redirect is issued by throwing {@link RedirectException} (status 307 plus a
+ * Location header). Setting the status on the servlet response and returning null does
+ * NOT work: HAPI overwrites it, and the client receives 404 with a Location header.
  */
 @Component
 public class BinaryProvider implements IResourceProvider {
@@ -90,7 +88,7 @@ public class BinaryProvider implements IResourceProvider {
     }
 
     @Read
-    public Binary read(@IdParam IdType id, HttpServletResponse response) {
+    public Binary read(@IdParam IdType id) {
         String binaryId = id.getIdPart();
         Pointer pointer = searchService.findById(binaryId)
                 .orElseThrow(() -> new ResourceNotFoundException("Binary/" + binaryId));
@@ -126,13 +124,10 @@ public class BinaryProvider implements IResourceProvider {
             throw new ResourceNotFoundException("Binary/" + binaryId + " content URL host is not in the allowed list");
         }
 
-        // Write the redirect directly so HAPI never gets to reset the status.
-        // HAPI injects HttpServletResponse into @Read methods via its parameter
-        // resolver — returning null signals "response already written".
-        response.setStatus(HttpServletResponse.SC_TEMPORARY_REDIRECT);
-        response.setHeader("Location", contentUrl);
+        // ITI-68 is a 307 redirect. A @Read method cannot issue one by writing to the
+        // servlet response (HAPI overwrites the status afterwards, giving the client a
+        // 404 with a Location header), so it is expressed as an exception HAPI honours.
         auditService.recordRetrieve(pointer.phn(), binaryId, true);
-
-        return null;
+        throw new RedirectException(contentUrl);
     }
 }
