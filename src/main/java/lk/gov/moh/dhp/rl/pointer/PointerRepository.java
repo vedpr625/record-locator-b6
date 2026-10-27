@@ -31,6 +31,10 @@ public interface PointerRepository extends JpaRepository<Pointer, String> {
     @Query("select p from Pointer p where p.phn = :phn order by p.indexedAt desc")
     List<Pointer> findAllByPhn(@Param("phn") String phn);
 
+    // Type filter note: a pointer ingested without docTypeLoinc is *presented* as LOINC
+    // 34133-9 (PointerFhirMapper.buildDocType fallback), so a search for 34133-9 must
+    // match those rows too - otherwise a consumer sees the code in results but cannot
+    // filter by it. The same rule applies to all three search queries below.
     @Query("""
             select p from Pointer p
             where p.phn = :phn
@@ -38,7 +42,8 @@ public interface PointerRepository extends JpaRepository<Pointer, String> {
               and (:status is null or p.status = :status)
               and (:dateFrom is null or p.indexedAt >= :dateFrom)
               and (:dateTo is null or p.indexedAt < :dateTo)
-              and (:docTypeLoinc is null or p.docTypeLoinc = :docTypeLoinc)
+              and (:docTypeLoinc is null or p.docTypeLoinc = :docTypeLoinc
+                   or (p.docTypeLoinc is null and :docTypeLoinc = '34133-9'))
               and (:facilityHin is null or p.facilityHin = :facilityHin)
               and (:identifier is null or p.id = :identifier)
             order by p.indexedAt desc
@@ -63,7 +68,8 @@ public interface PointerRepository extends JpaRepository<Pointer, String> {
               and (:status is null or p.status = :status)
               and (:dateFrom is null or p.indexedAt >= :dateFrom)
               and (:dateTo is null or p.indexedAt < :dateTo)
-              and (:docTypeLoinc is null or p.docTypeLoinc = :docTypeLoinc)
+              and (:docTypeLoinc is null or p.docTypeLoinc = :docTypeLoinc
+                   or (p.docTypeLoinc is null and :docTypeLoinc = '34133-9'))
               and (:identifier is null or p.id = :identifier)
               and p.facilityHin in :facilityHins
             order by p.indexedAt desc
@@ -88,7 +94,8 @@ public interface PointerRepository extends JpaRepository<Pointer, String> {
               and (:status is null or p.status = :status)
               and (:dateFrom is null or p.indexedAt >= :dateFrom)
               and (:dateTo is null or p.indexedAt < :dateTo)
-              and (:docTypeLoinc is null or p.docTypeLoinc = :docTypeLoinc)
+              and (:docTypeLoinc is null or p.docTypeLoinc = :docTypeLoinc
+                   or (p.docTypeLoinc is null and :docTypeLoinc = '34133-9'))
               and (:facilityHin is null or p.facilityHin = :facilityHin)
               and (:identifier is null or p.id = :identifier)
             order by p.indexedAt desc

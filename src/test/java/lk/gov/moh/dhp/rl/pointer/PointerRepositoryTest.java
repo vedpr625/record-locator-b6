@@ -143,6 +143,56 @@ class PointerRepositoryTest {
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
+    // ── type filter: pointers without a stored LOINC code are presented as 34133-9 ──
+
+    private Pointer withType(String id, String loinc) {
+        return Pointer.builder()
+                .id(id).phn("PHN9").resourceType("Encounter")
+                .docTypeLoinc(loinc)
+                .contentUrl("https://nehr.example/" + id)
+                .facilityHin("HIN001").facilityName("Test Hospital")
+                .status(Pointer.Status.CURRENT)
+                .consent(Consent.defaultAccessible())
+                .nationalSynced(false)
+                .build();
+    }
+
+    @Test
+    void search_typeFallbackCode_matchesPointersWithNoStoredType() {
+        repo.save(withType("no-type", null));
+        repo.save(withType("discharge", "18842-5"));
+
+        List<Pointer> fallback = repo.search("PHN9", Pointer.Status.CURRENT, null, null,
+                "34133-9", null, null);
+        assertThat(fallback).extracting(Pointer::id).containsExactly("no-type");
+
+        List<Pointer> discharge = repo.search("PHN9", Pointer.Status.CURRENT, null, null,
+                "18842-5", null, null);
+        assertThat(discharge).extracting(Pointer::id).containsExactly("discharge");
+
+        // other codes must not pick up untyped pointers
+        assertThat(repo.search("PHN9", Pointer.Status.CURRENT, null, null, "11502-2", null, null)).isEmpty();
+    }
+
+    @Test
+    void searchByPhns_typeFallbackCode_matchesPointersWithNoStoredType() {
+        repo.save(withType("no-type", null));
+        repo.save(withType("discharge", "18842-5"));
+
+        assertThat(repo.searchByPhns(List.of("PHN9"), Pointer.Status.CURRENT, null, null, "34133-9", null, null))
+                .extracting(Pointer::id).containsExactly("no-type");
+    }
+
+    @Test
+    void searchWithinFacilities_typeFallbackCode_matchesPointersWithNoStoredType() {
+        repo.save(withType("no-type", null));
+        repo.save(withType("discharge", "18842-5"));
+
+        assertThat(repo.searchWithinFacilities("PHN9", Pointer.Status.CURRENT, null, null, "34133-9", null,
+                List.of("HIN001")))
+                .extracting(Pointer::id).containsExactly("no-type");
+    }
+
     private Pointer buildPointer(String id, String phn, Pointer.Status status, boolean accessible) {
         return Pointer.builder()
                 .id(id)
