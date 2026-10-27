@@ -1,0 +1,26 @@
+[Unit]
+Description=Record Locator FHIR Service (demo, H2)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=record-locator
+Group=record-locator
+WorkingDirectory=/opt/record-locator
+EnvironmentFile=/etc/record-locator/record-locator.env
+ExecStart=/usr/bin/java -Xmx512m -jar /opt/record-locator/record-locator.jar
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=record-locator
+
+# Hardening (writes only to /var/lib/record-locator, where the H2 file lives)
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=/var/lib/record-locator
+
+[Install]
+WantedBy=multi-user.target
