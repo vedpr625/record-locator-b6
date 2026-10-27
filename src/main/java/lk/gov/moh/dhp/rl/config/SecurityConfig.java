@@ -196,7 +196,14 @@ public class SecurityConfig {
 
             if (enabled && isNodeToNodeEndpoint
                     && !successValue.equals(request.getHeader(headerName))) {
-                response.sendError(HttpServletResponse.SC_FORBIDDEN, "client certificate verification required");
+                // Write the 403 directly instead of sendError(): this filter runs before
+                // authentication, and sendError() forwards to /error, which is itself
+                // behind the security rules - an unauthenticated error dispatch is then
+                // answered 401, hiding the real reason (missing client certificate).
+                response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+                response.setContentType("application/json");
+                response.getWriter().write(
+                        "{\"error\":\"forbidden\",\"message\":\"client certificate verification required\"}");
                 return;
             }
 
