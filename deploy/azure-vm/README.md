@@ -17,6 +17,14 @@ OpenSearch off. Not for production (no PostgreSQL, no TLS, no backups).
 5. **Check**: `curl localhost:8080/actuator/health` -> `{"status":"UP"}`;
    `journalctl -u record-locator -f` for logs.
 
+## Without Keycloak (open API, demo only)
+
+Use `record-locator-demo-noauth.env` instead: copy it to the VM as `record-locator-demo.env`
+(and replace both `CHANGE_ME` passwords with the same value), then run `setup-demo.sh`.
+It runs the `dev` profile, so **nothing is authenticated**: lock port 8080 to your IP and use
+dummy data only. To switch back later, install `record-locator-demo.env` and set
+`IDP_ISSUER_URI`.
+
 ## Good to know
 
 - Authentication is ON. Without a valid Keycloak token every `/fhir/**` call returns 401.
