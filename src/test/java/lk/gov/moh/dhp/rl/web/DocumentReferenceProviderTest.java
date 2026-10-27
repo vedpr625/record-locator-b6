@@ -373,4 +373,89 @@ class DocumentReferenceProviderTest {
                 .consent(Consent.defaultAccessible())
                 .build();
     }
+
+    // ── Date-only bounds must not shift with the JVM timezone ────────────────
+
+    private lk.gov.moh.dhp.rl.common.SearchQuery searchWithDate(DateRangeParam range) {
+        when(searchService.search(any())).thenReturn(List.of());
+        when(consentGate.checkSearch(any(), any())).thenReturn(false);
+        provider.search(new ReferenceParam("PHN001"), null, null, range, null, null, null, null, null, null);
+        ArgumentCaptor<lk.gov.moh.dhp.rl.common.SearchQuery> cap =
+                ArgumentCaptor.forClass(lk.gov.moh.dhp.rl.common.SearchQuery.class);
+        verify(searchService).search(cap.capture());
+        return cap.getValue();
+    }
+
+    private void withDefaultZone(String zoneId, Runnable body) {
+        java.util.TimeZone original = java.util.TimeZone.getDefault();
+        try {
+            java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone(zoneId));
+            body.run();
+        } finally {
+            java.util.TimeZone.setDefault(original);
+        }
+    }
+
+    @Test
+    void search_dateOnlyBounds_keepCalendarDateInNonUtcJvmZone() {
+        for (String zone : List.of("Asia/Colombo", "Asia/Kolkata", "America/Los_Angeles", "UTC", "Pacific/Auckland")) {
+            withDefaultZone(zone, () -> {
+                // "ge2026-10-28" -> dateFrom 2026-10-28 (was 2026-10-27 east of UTC)
+                // "le2026-10-27" -> dateTo   2026-10-27 (was a day early / wrong west of UTC)
+                DateRangeParam range = new DateRangeParam(
+                        new ca.uhn.fhir.rest.param.DateParam(ca.uhn.fhir.rest.param.ParamPrefixEnum.GREATERTHAN_OR_EQUALS, "2026-10-28"),
+                        new ca.uhn.fhir.rest.param.DateParam(ca.uhn.fhir.rest.param.ParamPrefixEnum.LESSTHAN_OR_EQUALS, "2026-10-29"));
+                setUp();
+                lk.gov.moh.dhp.rl.common.SearchQuery q = searchWithDate(range);
+                assertThat(q.dateFrom()).as("dateFrom in " + zone).isEqualTo(java.time.LocalDate.of(2026, 10, 28));
+                assertThat(q.dateTo()).as("dateTo in " + zone).isEqualTo(java.time.LocalDate.of(2026, 10, 29));
+            });
+        }
+    }
+
+    @Test
+    void search_dateWithTimeAndOffset_isNormalisedToUtcDate() {
+        withDefaultZone("Asia/Colombo", () -> {
+            // 2026-10-28T01:00:00+05:30 == 2026-10-27T19:30:00Z -> UTC date 2026-10-27
+            DateRangeParam range = new DateRangeParam(
+                    new ca.uhn.fhir.rest.param.DateParam(ca.uhn.fhir.rest.param.ParamPrefixEnum.GREATERTHAN_OR_EQUALS,
+                            "2026-10-28T01:00:00+05:30"), null);
+            setUp();
+            assertThat(searchWithDate(range).dateFrom()).isEqualTo(java.time.LocalDate.of(2026, 10, 27));
+        });
+    }
+
+    // ── patient.identifier with a system prefix ──────────────────────────────
+
+    @Test
+    void search_patientIdentifierWithSystem_usesValueNotRawString() {
+        when(searchService.search(any())).thenReturn(List.of());
+        when(consentGate.checkSearch(any(), any())).thenReturn(false);
+
+        // For "patient.identifier=urn:phn|1111111111" HAPI populates BOTH params; the
+        // reference carries the raw "system|value" string.
+        provider.search(new ReferenceParam("urn:phn|1111111111"),
+                new TokenParam("urn:phn", "1111111111"),
+                null, null, null, null, null, null, null, null);
+
+        ArgumentCaptor<lk.gov.moh.dhp.rl.common.SearchQuery> cap =
+                ArgumentCaptor.forClass(lk.gov.moh.dhp.rl.common.SearchQuery.class);
+        verify(searchService).search(cap.capture());
+        assertThat(cap.getValue().phn()).isEqualTo("1111111111");
+        verify(consentGate).checkSearch("1111111111", "ITI-67");
+    }
+
+    @Test
+    void search_patientReferenceOnly_stillUsesIdPart() {
+        when(searchService.search(any())).thenReturn(List.of());
+        when(consentGate.checkSearch(any(), any())).thenReturn(false);
+
+        provider.search(new ReferenceParam("Patient/1111111111"), null,
+                null, null, null, null, null, null, null, null);
+
+        ArgumentCaptor<lk.gov.moh.dhp.rl.common.SearchQuery> cap =
+                ArgumentCaptor.forClass(lk.gov.moh.dhp.rl.common.SearchQuery.class);
+        verify(searchService).search(cap.capture());
+        assertThat(cap.getValue().phn()).isEqualTo("1111111111");
+    }
 }

@@ -30,11 +30,15 @@ final class FhirParamUtil {
      * @return the extracted PHN, or {@code null} if neither param was supplied
      */
     static String resolvePhn(ReferenceParam patient, TokenParam patientIdentifier) {
-        if (patient != null) {
-            return patient.getIdPart();
-        }
+        // patient.identifier must be checked first: for "patient.identifier=sys|123" HAPI
+        // populates BOTH parameters, and the patient reference then carries the raw
+        // "sys|123" string, which would be used as the PHN. The token parameter has
+        // already split system from value.
         if (patientIdentifier != null) {
             return patientIdentifier.getValue();
+        }
+        if (patient != null) {
+            return patient.getIdPart();
         }
         return null;
     }

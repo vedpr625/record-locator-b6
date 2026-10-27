@@ -90,6 +90,41 @@ class SearchServiceTest {
         verifyNoInteractions(pointerRepository);
     }
 
+    @Test
+    void search_byName_withProvince_keepsOnlyPointersFromFacilitiesInThatProvince() {
+        when(openSearchService.findPhnsByName("Perera")).thenReturn(List.of("PHN001"));
+        Pointer inProvince = mockPointer("PHN001", Consent.defaultAccessible());
+        when(inProvince.facilityHin()).thenReturn("HIN001");
+        Pointer otherProvince = mockPointer("PHN001", Consent.defaultAccessible());
+        when(otherProvince.facilityHin()).thenReturn("HIN002");
+        Pointer noFacility = mockPointer("PHN001", Consent.defaultAccessible());
+        when(noFacility.facilityHin()).thenReturn(null);
+        when(pointerRepository.searchByPhns(anyList(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(List.of(inProvince, otherProvince, noFacility));
+        when(facilityRepository.findByProvinceCode("WP"))
+                .thenReturn(List.of(new lk.gov.moh.dhp.rl.facility.Facility("HIN001", "Homagama", "WP")));
+
+        SearchQuery q = new SearchQuery(null, "Perera", Pointer.Status.CURRENT,
+                null, null, null, null, "WP", null, null);
+
+        assertThat(searchService.search(q)).containsExactly(inProvince);
+    }
+
+    @Test
+    void search_byName_withProvinceHavingNoFacilities_returnsEmpty() {
+        when(openSearchService.findPhnsByName("Perera")).thenReturn(List.of("PHN001"));
+        Pointer p = mockPointer("PHN001", Consent.defaultAccessible());
+        when(p.facilityHin()).thenReturn("HIN001");
+        when(pointerRepository.searchByPhns(anyList(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(List.of(p));
+        when(facilityRepository.findByProvinceCode("ZZ")).thenReturn(List.of());
+
+        SearchQuery q = new SearchQuery(null, "Perera", Pointer.Status.CURRENT,
+                null, null, null, null, "ZZ", null, null);
+
+        assertThat(searchService.search(q)).isEmpty();
+    }
+
     // ── Purpose-of-use filtering ──────────────────────────────────────────────
 
     @Test

@@ -11,6 +11,8 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Bundle 6 / edge profile: all search is local (no federation).
@@ -84,8 +86,20 @@ public class SearchService {
         Instant dateTo = query.dateTo() == null ? null
                 : query.dateTo().plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant();
 
-        return pointerRepository.searchByPhns(phns, query.status(), dateFrom, dateTo,
+        List<Pointer> results = pointerRepository.searchByPhns(phns, query.status(), dateFrom, dateTo,
                 query.docTypeLoinc(), query.facilityHin(), query.identifier());
+
+        // _province must narrow name searches the same way it narrows PHN searches
+        // (searchLocal); previously it was silently dropped on this path.
+        if (query.provinceCode() == null) {
+            return results;
+        }
+        Set<String> facilitiesInProvince = facilityRepository.findByProvinceCode(query.provinceCode()).stream()
+                .map(Facility::hin)
+                .collect(Collectors.toSet());
+        return results.stream()
+                .filter(p -> p.facilityHin() != null && facilitiesInProvince.contains(p.facilityHin()))
+                .toList();
     }
 
     private List<Pointer> searchLocal(SearchQuery query) {

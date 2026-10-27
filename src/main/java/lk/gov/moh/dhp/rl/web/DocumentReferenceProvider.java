@@ -4,6 +4,8 @@ import ca.uhn.fhir.rest.annotation.IdParam;
 import ca.uhn.fhir.rest.annotation.OptionalParam;
 import ca.uhn.fhir.rest.annotation.Read;
 import ca.uhn.fhir.rest.annotation.Search;
+import ca.uhn.fhir.model.api.TemporalPrecisionEnum;
+import ca.uhn.fhir.rest.param.DateParam;
 import ca.uhn.fhir.rest.param.DateRangeParam;
 import ca.uhn.fhir.rest.param.ReferenceParam;
 import ca.uhn.fhir.rest.param.StringParam;
@@ -28,6 +30,7 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.Date;
 import java.util.List;
@@ -114,9 +117,9 @@ public class DocumentReferenceProvider implements IResourceProvider {
      */
     private SearchQuery buildQuery(String phn, DateRangeParam effectiveDate, SearchParams p) {
         LocalDate dateFrom = effectiveDate == null || effectiveDate.getLowerBound() == null ? null
-                : toLocalDate(effectiveDate.getLowerBound().getValue());
+                : toLocalDate(effectiveDate.getLowerBound());
         LocalDate dateTo = effectiveDate == null || effectiveDate.getUpperBound() == null ? null
-                : toLocalDate(effectiveDate.getUpperBound().getValue());
+                : toLocalDate(effectiveDate.getUpperBound());
         return new SearchQuery(
                 phn,
                 p.patientName() == null ? null : p.patientName().getValue(),
@@ -244,9 +247,25 @@ public class DocumentReferenceProvider implements IResourceProvider {
         };
     }
 
-    private LocalDate toLocalDate(Date date) {
-        // Always UTC — using systemDefault() shifts the date on a Sri Lanka (UTC+5:30)
-        // JVM and silently excludes studies created in early UTC hours.
-        return date.toInstant().atZone(ZoneOffset.UTC).toLocalDate();
+    /**
+     * Converts a FHIR date bound to the calendar date the caller wrote.
+     *
+     * <p>HAPI parses a date-only value ("2026-10-27") as local midnight in the JVM's
+     * default timezone, so converting that instant with UTC shifts the date on any
+     * non-UTC JVM (e.g. Sri Lanka, UTC+5:30: "ge2026-10-28" became 2026-10-27, and
+     * "le2026-10-27" became the day before). For day-or-coarser precision the
+     * calendar date is therefore recovered in the same zone HAPI used to parse it.
+     * Values with a time component carry an explicit instant/offset, so those are
+     * normalised to UTC.
+     */
+    private LocalDate toLocalDate(DateParam param) {
+        Date date = param.getValue();
+        TemporalPrecisionEnum precision = param.getPrecision();
+        boolean dateOnly = precision == null
+                || precision == TemporalPrecisionEnum.YEAR
+                || precision == TemporalPrecisionEnum.MONTH
+                || precision == TemporalPrecisionEnum.DAY;
+        ZoneId zone = dateOnly ? ZoneId.systemDefault() : ZoneOffset.UTC;
+        return date.toInstant().atZone(zone).toLocalDate();
     }
 }
