@@ -1,0 +1,67 @@
+version: "3.8"
+
+services:
+  # ── Orthanc DICOM server ──────────────────────────────────────────────
+  orthanc:
+    image: jodogne/orthanc-plugins:1.12.4
+    restart: unless-stopped
+    volumes:
+      - orthanc-data:/var/lib/orthanc/db
+    networks:
+      - backend
+
+  # ── OHIF Viewer ───────────────────────────────────────────────────────
+  ohif:
+    image: ohif/app:v3.8.1
+    restart: unless-stopped
+    networks:
+      - backend
+
+  # ── nginx gateway (internal routing) ─────────────────────────────────
+  gateway:
+    image: nginx:alpine
+    restart: unless-stopped
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - backend
+
+  # ── Caddy (SSL termination) ───────────────────────────────────────────
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS}
+    networks:
+      - backend
+
+  # ── Hospital RIS ──────────────────────────────────────────────────────
+  ris:
+    image: eclipse-temurin:17-jre
+    restart: unless-stopped
+    working_dir: /app
+    volumes:
+      - ./hospital-ris-1.0.0.jar:/app/hospital-ris-1.0.0.jar:ro
+    command: ["java", "-jar", "hospital-ris-1.0.0.jar", "--server.port=8083"]
+    ports:
+      - "8083:8083"
+    networks:
+      - backend
+
+volumes:
+  orthanc-data:
+  caddy-data:
+  caddy-config:
+
+networks:
+  backend:
+    driver: bridge
