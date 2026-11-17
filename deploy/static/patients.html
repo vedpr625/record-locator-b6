@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Find a patient · National record viewer</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<style>
+:root{
+  --bg:#f3f6fa; --surface:#fff; --line:#e3e8ef; --line-strong:#cfd8e3; --hair:#eef2f7;
+  --text:#1b1f27; --text-2:#3b4252; --muted:#566074;
+  --accent:#2a6099; --accent-bg:#e6eff9; --accent-line:#b9d0ea;
+  --ok:#14532d; --ok-bg:#e3f4ea; --warn:#7a4300; --warn-bg:#fdf0dc; --warn-line:#ecc994;
+  --bad:#7a1a1a; --bad-bg:#fde4e4;
+  --shadow:0 1px 2px rgba(15,23,42,.05),0 6px 18px rgba(15,23,42,.06); --shadow-sm:0 1px 2px rgba(15,23,42,.08);
+}
+*{box-sizing:border-box} html,body{margin:0}
+body{font-family:'Inter',system-ui,-apple-system,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.5}
+button,input,select{font-family:inherit;font-size:inherit;color:inherit} button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.top{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:12px 24px;background:var(--surface);border-bottom:1px solid var(--line);box-shadow:var(--shadow-sm)}
+.brand{display:flex;align-items:center;gap:12px}
+.logo{width:36px;height:36px;border-radius:10px;background:var(--accent-bg);color:var(--accent);display:grid;place-items:center;font-weight:700;font-size:20px}
+.brand-name{font-weight:700;color:var(--accent)} .brand-sub{font-size:12.5px;color:var(--muted)}
+.user{display:flex;align-items:center;gap:12px;text-align:right} .user-name{font-weight:600} .user-fac{font-size:12.5px;color:var(--muted)}
+.avatar{width:38px;height:38px;border-radius:50%;background:var(--accent-bg);color:var(--accent);display:grid;place-items:center;font-weight:700;font-size:13px;flex-shrink:0}
+.sample-chip{font-size:12px;font-weight:600;background:var(--warn-bg);color:var(--warn);border:1px solid var(--warn-line);padding:2px 10px;border-radius:99px}
+.wrap{max-width:1000px;margin:0 auto;padding:24px}
+h1{font-size:24px;margin:8px 0 4px} .sub{color:var(--muted);margin:0 0 18px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:20px}
+.grid{display:grid;grid-template-columns:2fr 1fr;gap:14px}
+.grid2{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-top:14px;align-items:end}
+.tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}.tags .pill{background:#f0f3f8;color:var(--text-2);font-weight:500}
+label{display:block;font-size:12.5px;font-weight:600;color:var(--text-2);margin-bottom:5px}
+.in{width:100%;min-height:44px;padding:0 12px;border:1px solid var(--line-strong);border-radius:10px;background:#fff}
+.in:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-bg);outline:none}
+.hint{font-size:12.5px;color:var(--muted);margin-top:5px}
+.btn{min-height:44px;padding:0 18px;border:1px solid var(--line-strong);background:#fff;border-radius:10px;font-weight:600;box-shadow:var(--shadow-sm)}
+.btn:hover{background:#f7f9fc} .btn-primary{background:var(--accent-bg);border-color:var(--accent-line);color:var(--accent)} .btn-primary:hover{background:#d9e8f8}
+.btn-sm{min-height:36px;padding:0 14px;font-size:13px}
+.actions{display:flex;gap:10px;justify-content:flex-end;align-items:center}
+.msg{display:flex;gap:10px;align-items:flex-start;border-radius:10px;padding:12px 14px;font-size:13.5px;margin-top:16px}
+.msg.bad{background:var(--bad-bg);color:var(--bad)} .msg.info{background:var(--accent-bg);color:#1f4b7a} .msg.warn{background:var(--warn-bg);color:var(--warn)}
+.res-head{display:flex;justify-content:space-between;align-items:center;margin:22px 2px 10px}
+.res-head b{font-size:15px}
+.row{display:flex;align-items:center;gap:14px;padding:14px 16px;border-top:1px solid var(--hair)}
+.row:first-child{border-top:0}
+.who{flex:1;min-width:0} .who .n{font-weight:700;font-size:15px} .who .m{color:var(--muted);font-size:13px}
+.ids{display:flex;gap:18px;color:var(--text-2);font-size:13px} .ids span b{display:block;font-size:11px;letter-spacing:.05em;color:var(--muted);font-weight:600}
+.enc{padding:6px 16px 14px 68px;border-top:1px dashed var(--hair);background:#fafcff}
+.enc-row{display:flex;align-items:center;gap:12px;padding:8px 0;border-top:1px solid var(--hair)} .enc-row:first-child{border-top:0}
+.enc-row .t{flex:1} .enc-row .t small{display:block;color:var(--muted)}
+a.btn{color:inherit} a.btn-primary{color:var(--accent)}
+.pill{font-size:12px;font-weight:600;padding:2px 10px;border-radius:99px;background:var(--accent-bg);color:var(--accent)}
+.pager{display:flex;justify-content:center;gap:12px;align-items:center;margin-top:14px;color:var(--muted)}
+.empty{text-align:center;padding:36px 16px;color:var(--text-2)} .empty b{display:block;font-size:17px;color:var(--text);margin-bottom:4px}
+select.in{appearance:auto}
+@media (max-width:760px){.grid,.grid2{grid-template-columns:1fr 1fr}.ids{display:none}.enc{padding-left:16px}}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand"><div class="logo">+</div><div><div class="brand-name">National record viewer</div></div></div>
+  <div class="user" id="user"></div>
+</header>
+<main class="wrap">
+  <h1>Find a patient</h1>
+  <p class="sub">Search the record locator for patients who have shared records. Every search is logged.</p>
+  <form class="card" id="f" autocomplete="off">
+    <div class="grid">
+      <div><label for="name">Patient name</label><input class="in" id="name" placeholder="e.g. Perera or Nimal Perera"><div class="hint">At least 2 letters</div></div>
+      <div><label for="id">PHN</label><input class="in" id="id" placeholder="Full PHN"><div class="hint">Exact match</div></div>
+    </div>
+    <div class="grid2">
+      <div><label for="type">Has a document of type</label><select class="in" id="type"><option value="">Any type</option><option value="18842-5">Discharge summary</option><option value="34133-9">Encounter summary</option><option value="11502-2">Laboratory report</option><option value="18748-4">Imaging study</option><option value="11488-4">Consultation note</option></select></div>
+      <div><label for="since">Documents since</label><input class="in" id="since" type="date"></div>
+      <div class="actions"><button type="button" class="btn" id="clear">Clear</button><button class="btn btn-primary" id="go">Search</button></div>
+    </div>
+    <div id="formmsg"></div>
+  </form>
+  <div id="out"></div>
+</main>
+<script>
+const Q = new URLSearchParams(location.search);
+const MOCK = Q.get('mode') === 'mock';
+const API = (Q.get('api') || '').replace(/\/$/, '');
+const FACILITY_MAP = {
+  'A': { name: 'Hospital A – Homagama', short: 'HA' },
+  'B': { name: 'Hospital B – NHSL',     short: 'HB' },
+};
+const FACILITY = Q.get('facility') ? (FACILITY_MAP[Q.get('facility')] || null) : null;
+const $ = id => document.getElementById(id);
+function h(tag, attrs, ...kids) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) { if (v == null || v === false) continue; if (k === 'class') e.className = v; else if (k.startsWith('on')) e.addEventListener(k.slice(2), v); else e.setAttribute(k, v === true ? '' : v); }
+  for (const c of kids.flat(Infinity)) { if (c == null || c === false) continue; e.append(c.nodeType ? c : document.createTextNode(String(c))); }
+  return e;
+}
+const initials = n => (n || '?').split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase();
+const fmtDate = iso => iso ? new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
+const cap = s => s ? s[0].toUpperCase() + s.slice(1) : '';
+
+/* sample data so the page can be reviewed without any backend (?mode=mock) */
+const MOCK_PT = [
+  { phn: '1234567890', name: 'Nimal Perera', gender: 'male', age: 65, documentCount: 6, lastDocumentDate: '2026-10-31T08:00:00Z', facilities: ['Sample Teaching Hospital', 'Sample General Hospital'], types: ['Discharge summary', 'Laboratory report', 'Imaging study'] },
+  { phn: '1234500001', name: 'Kamala Perera', gender: 'female', age: 56, documentCount: 2, lastDocumentDate: '2026-09-12T08:00:00Z', facilities: ['Sample District Hospital'], types: ['Encounter summary'] },
+  { phn: '1234500009', name: null, gender: null, age: null, documentCount: 1, lastDocumentDate: '2026-08-02T08:00:00Z', facilities: ['Sample Health Unit'], types: ['Laboratory report'] }];
+const MOCK_ENC = [{ id: 'E1', type: 'Medical admission', cls: 'Inpatient', facility: 'Sample Teaching Hospital', periodStart: '2026-10-26', periodEnd: '2026-10-31' },
+                  { id: 'E2', type: 'Diabetes clinic', cls: 'Outpatient', facility: 'Sample General Hospital', periodStart: '2026-09-12', periodEnd: '2026-09-12' }];
+
+async function api(path) {
+  if (MOCK) return mockApi(path);
+  let res;
+  try { res = await fetch(API + path, { headers: { Accept: 'application/json' } }); }
+  catch (e) { const er = new Error('The viewer service did not respond.'); er.code = 'viewer-unavailable'; throw er; }
+  if (!res.ok) { let b = {}; try { b = await res.json(); } catch (_) {} const er = new Error(b.message || 'HTTP ' + res.status); er.code = b.error || 'http'; throw er; }
+  return res.json();
+}
+function mockApi(path) {
+  const u = new URL(path, 'http://x');
+  if (u.pathname === '/api/config') return Promise.resolve({ user: { name: 'Dr. Sample Doctor', facility: 'Sample General Hospital' } });
+  if (u.pathname.endsWith('/encounters')) return Promise.resolve(MOCK_ENC);
+  const name = (u.searchParams.get('name') || '').toLowerCase(), id = u.searchParams.get('id'), type = u.searchParams.get('type'), since = u.searchParams.get('since');
+  const names = { 'Discharge summary': '18842-5', 'Encounter summary': '34133-9', 'Laboratory report': '11502-2', 'Imaging study': '18748-4', 'Consultation note': '11488-4' };
+  const rows = MOCK_PT.filter(p => (!name || (p.name || '').toLowerCase().includes(name)) && (!id || p.phn === id)
+    && (!type || p.types.some(t => names[t] === type)) && (!since || p.lastDocumentDate.slice(0, 10) >= since));
+  return Promise.resolve({ rows, partial: false, namesFromNehr: true });
+}
+
+const state = { rows: [], partial: false, sort: 'recent', open: new Set(), enc: {} };
+
+function validate() {
+  const v = k => $(k).value.trim();
+  if (!v('name') && !v('id')) return 'Enter a patient name or a PHN to search.';
+  if (v('name') && v('name').length < 2) return 'Enter at least 2 letters of the name.';
+  if (v('id') && v('id').length < 4) return 'Enter the full PHN.';
+  return null;
+}
+function query() {
+  const p = new URLSearchParams();
+  ['name', 'id', 'type', 'since'].forEach(k => { const x = $(k).value.trim(); if (x) p.set(k, x); });
+  return p.toString();
+}
+async function search() {
+  const err = validate();
+  $('formmsg').replaceChildren(err ? h('div', { class: 'msg warn', role: 'alert' }, err) : '');
+  if (err) return;
+  state.open = new Set(); state.enc = {};
+  $('out').replaceChildren(h('div', { class: 'msg info' }, 'Searching…'));
+  try {
+    const r = await api('/api/patients/search?' + query());
+    state.rows = r.rows; state.partial = r.partial; render();
+  } catch (e) {
+    $('out').replaceChildren(h('div', { class: 'msg bad', role: 'alert' }, e.code === 'locator-unavailable' ? 'The record locator did not respond. Please try again in a moment.'
+      : e.code === 'viewer-unavailable' ? 'The viewer service did not respond.' : e.code === 'bad-request' ? e.message : 'The search could not be completed.'));
+  }
+}
+function contextLink(phn, enc) {
+  const p = new URLSearchParams({ mode: MOCK ? 'mock' : 'live', phn }); if (enc) p.set('encounter', enc);
+  if (Q.get('facility')) p.set('facility', Q.get('facility')); else if (API) p.set('api', API);
+  return 'index.html?' + p.toString();
+}
+async function toggleEnc(p) {
+  if (state.open.has(p.phn)) state.open.delete(p.phn); else {
+    state.open.add(p.phn);
+    if (!state.enc[p.phn]) {
+      state.enc[p.phn] = { loading: true }; render();
+      try { state.enc[p.phn] = { list: await api('/api/patients/' + encodeURIComponent(p.phn) + '/encounters') }; }
+      catch (e) { state.enc[p.phn] = { error: true }; }
+    }
+  }
+  render();
+}
+function render() {
+  const out = $('out');
+  if (!state.rows.length) {
+    out.replaceChildren(h('div', { class: 'card empty' }, h('b', {}, 'No patients found'), 'The record locator only finds patients who have at least one shared document. Check the spelling, try the PHN, or remove the type and date filters.'));
+    return;
+  }
+  const rows = state.rows.slice().sort((a, b) => state.sort === 'name' ? (a.name || '~').localeCompare(b.name || '~') : (b.lastDocumentDate || '').localeCompare(a.lastDocumentDate || ''));
+  const list = h('div', { class: 'card', style: 'padding:0' });
+  rows.forEach(p => {
+    list.append(h('div', { class: 'row' },
+      h('div', { class: 'avatar' }, p.name ? initials(p.name) : p.phn.slice(-2)),
+      h('div', { class: 'who' },
+        h('div', { class: 'n' }, p.name || 'Name not available'),
+        h('div', { class: 'm' }, [p.age != null ? p.age + ' y' : null, cap(p.gender), p.documentCount + ' document' + (p.documentCount === 1 ? '' : 's'), p.lastDocumentDate ? 'last ' + fmtDate(p.lastDocumentDate) : null].filter(Boolean).join(' · ')),
+        h('div', { class: 'm' }, (p.facilities || []).join(', ')),
+        (p.types || []).length ? h('div', { class: 'tags' }, p.types.slice(0, 4).map(t => h('span', { class: 'pill' }, t))) : null),
+      h('div', { class: 'ids' }, h('span', {}, h('b', {}, 'PHN'), p.phn)),
+      h('button', { class: 'btn btn-sm', 'aria-expanded': String(state.open.has(p.phn)), onclick: () => toggleEnc(p) }, 'Encounters ' + (state.open.has(p.phn) ? '▴' : '▾')),
+      h('a', { class: 'btn btn-primary btn-sm', href: contextLink(p.phn), style: 'display:inline-flex;align-items:center;text-decoration:none' }, 'Open record')));
+    if (state.open.has(p.phn)) {
+      const e = state.enc[p.phn] || {};
+      list.append(h('div', { class: 'enc' },
+        e.loading ? h('div', { class: 'hint' }, 'Loading encounters…')
+        : e.error ? h('div', { class: 'hint' }, 'Encounters could not be loaded.')
+        : !e.list.length ? h('div', { class: 'hint' }, 'No encounters recorded for this patient.')
+        : e.list.map(x => h('div', { class: 'enc-row' },
+            h('div', { class: 't' }, [x.type, x.cls].filter(Boolean).join(' · ') || 'Encounter', h('small', {}, [x.periodStart ? fmtDate(x.periodStart) + (x.periodEnd && x.periodEnd.slice(0, 10) !== x.periodStart.slice(0, 10) ? ' – ' + fmtDate(x.periodEnd) : '') : null, x.facility].filter(Boolean).join(' · '))),
+            h('a', { class: 'btn btn-sm', href: contextLink(p.phn, x.id), style: 'display:inline-flex;align-items:center;text-decoration:none' }, 'Open in this encounter')))));
+    }
+  });
+  out.replaceChildren(
+    h('div', { class: 'res-head' }, h('b', {}, rows.length + ' patient' + (rows.length === 1 ? '' : 's') + ' found'),
+      h('label', { style: 'margin:0;display:flex;align-items:center;gap:8px' }, 'Sort by', h('select', { class: 'in', style: 'min-height:36px;width:auto', onchange: e => { state.sort = e.target.value; render(); } },
+        h('option', { value: 'recent', selected: state.sort === 'recent' ? true : null }, 'Latest document'), h('option', { value: 'name', selected: state.sort === 'name' ? true : null }, 'Name')))),
+    list,
+    ...[state.partial ? h('div', { class: 'msg info' }, 'Showing patients from the most recent matching documents only. Narrow the search (add a name, PHN, type or date) to see the rest.') : null].filter(Boolean));
+}
+$('f').addEventListener('submit', e => { e.preventDefault(); search(); });
+$('clear').addEventListener('click', () => { ['name', 'id', 'type', 'since'].forEach(k => $(k).value = ''); $('formmsg').replaceChildren(); $('out').replaceChildren(); $('name').focus(); });
+document.addEventListener('keydown', e => { if (e.key === '/' && !['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement.tagName)) { e.preventDefault(); $('name').focus(); } });
+api('/api/config').then(c => {
+  const facLabel = FACILITY ? FACILITY.name : c.user.facility;
+  $('user').replaceChildren(...[MOCK ? h('span', { class: 'sample-chip' }, 'Sample data') : null, h('div', {}, h('div', { class: 'user-name' }, c.user.name), h('div', { class: 'user-fac' }, facLabel)), h('div', { class: 'avatar' }, initials(c.user.name.replace(/^Dr\.?\s*/, '')))].filter(Boolean));
+}).catch(() => {});
+$('name').focus();
+</script>
+</body>
+</html>
