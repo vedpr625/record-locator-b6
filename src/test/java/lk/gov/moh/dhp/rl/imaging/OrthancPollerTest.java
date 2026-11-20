@@ -45,7 +45,7 @@ class OrthancPollerTest {
 
         poller = new OrthancPoller(
                 restTemplate, objectMapper, pointerFactory, pointerRepository,
-                cursorRepository, applicationContext);
+                cursorRepository, applicationContext, Optional.empty());
 
         ReflectionTestUtils.setField(poller, "orthancBaseUrl", "http://orthanc:8042");
         ReflectionTestUtils.setField(poller, "facilityHin", "HIN001");
